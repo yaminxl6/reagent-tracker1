@@ -5,6 +5,7 @@ create table if not exists reagents (
   name text not null,
   department text not null,
   item_type text not null default 'Reagent',
+  device text not null default '',
   lot_number text not null,
   unit text not null,
   quantity_received numeric not null,
@@ -76,6 +77,13 @@ create table if not exists staff_accounts (
   created_at timestamptz default now()
 );
 
+create table if not exists devices (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  department text not null,
+  created_at timestamptz default now()
+);
+
 create table if not exists audit_log (
   id uuid primary key default gen_random_uuid(),
   action text not null,
@@ -91,6 +99,7 @@ alter table app_config enable row level security;
 alter table reagent_presets enable row level security;
 alter table staff_accounts enable row level security;
 alter table audit_log enable row level security;
+alter table devices enable row level security;
 
 create policy "allow all reagents" on reagents for all using (true) with check (true);
 create policy "allow all consumption_logs" on consumption_logs for all using (true) with check (true);
@@ -98,6 +107,7 @@ create policy "allow all app_config" on app_config for all using (true) with che
 create policy "allow all reagent_presets" on reagent_presets for all using (true) with check (true);
 create policy "allow all staff_accounts" on staff_accounts for all using (true) with check (true);
 create policy "allow all audit_log" on audit_log for all using (true) with check (true);
+create policy "allow all devices" on devices for all using (true) with check (true);
 
 -- Note: this is an open (RLS "allow all") setup — fine for an internal lab tool
 -- with no patient data. Anyone with the app link and Supabase keys can read/write.

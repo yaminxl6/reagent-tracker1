@@ -2,10 +2,11 @@ import React, { useState } from "react";
 import { Trash2, Plus, Save } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
-export default function Settings({ config, presets, role, staffAccounts, reload }) {
+export default function Settings({ config, presets, role, staffAccounts, devices, reload }) {
   const departments = config.departments || [];
   const [newPreset, setNewPreset] = useState({ name: "", department: departments[0] || "", unit: "mL" });
   const [newDept, setNewDept] = useState("");
+  const [newDevice, setNewDevice] = useState({ name: "", department: departments[0] || "" });
   const [newStaff, setNewStaff] = useState({ username: "", password: "" });
   const [staffMsg, setStaffMsg] = useState("");
   const [creds, setCreds] = useState({
@@ -18,6 +19,18 @@ export default function Settings({ config, presets, role, staffAccounts, reload 
     low_stock_default_percent: config.low_stock_default_percent,
   });
   const [msg, setMsg] = useState("");
+
+  async function addDevice() {
+    if (!newDevice.name) return;
+    await supabase.from("devices").insert(newDevice);
+    setNewDevice({ name: "", department: departments[0] || "" });
+    reload();
+  }
+
+  async function deleteDevice(id) {
+    await supabase.from("devices").delete().eq("id", id);
+    reload();
+  }
 
   async function addStaffAccount() {
     if (!newStaff.username || !newStaff.password) return;
@@ -134,6 +147,41 @@ export default function Settings({ config, presets, role, staffAccounts, reload 
             <div style={{ flex: 1, fontWeight: 600, fontSize: 13.5 }}>{p.name}</div>
             <div style={{ fontSize: 12.5, color: "#7B8E8A" }}>{p.department} · {p.unit}</div>
             <button onClick={() => deletePreset(p.id)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={15} /></button>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3 }}>DEVICES / ANALYZERS</div>
+      <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>
+        Each device belongs to a department. Staff only see devices matching the department they picked when receiving stock.
+      </div>
+      <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 14, marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            placeholder="Device name, e.g. Cobas c311"
+            value={newDevice.name}
+            onChange={(e) => setNewDevice((d) => ({ ...d, name: e.target.value }))}
+            style={{ ...inputStyle, flex: 2, minWidth: 160, marginTop: 0 }}
+          />
+          <select
+            value={newDevice.department}
+            onChange={(e) => setNewDevice((d) => ({ ...d, department: e.target.value }))}
+            style={{ ...inputStyle, flex: 1, minWidth: 120, marginTop: 0 }}
+          >
+            {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <button onClick={addDevice} style={{ background: "#0F7173", color: "#fff", border: "none", borderRadius: 7, padding: "0 14px", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
+            <Plus size={14} /> Add
+          </button>
+        </div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 30 }}>
+        {(devices || []).length === 0 && <div style={{ fontSize: 13, color: "#8A9694" }}>No devices yet — add your lab's analyzers above.</div>}
+        {(devices || []).map((d) => (
+          <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, padding: "9px 14px" }}>
+            <div style={{ flex: 1, fontWeight: 600, fontSize: 13.5 }}>{d.name}</div>
+            <div style={{ fontSize: 12.5, color: "#7B8E8A" }}>{d.department}</div>
+            <button onClick={() => deleteDevice(d.id)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={15} /></button>
           </div>
         ))}
       </div>

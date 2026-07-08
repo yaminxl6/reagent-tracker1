@@ -43,6 +43,7 @@ export default function App() {
   const [logs, setLogs] = useState(null);
   const [presets, setPresets] = useState([]);
   const [staffAccounts, setStaffAccounts] = useState([]);
+  const [devices, setDevices] = useState([]);
   const [activityLog, setActivityLog] = useState([]);
   const [tab, setTab] = useState("dashboard");
   const [showWizard, setShowWizard] = useState(false);
@@ -69,6 +70,7 @@ export default function App() {
     const { data: p } = await supabase.from("reagent_presets").select("*").order("name");
     const { data: s } = await supabase.from("staff_accounts").select("*").order("username");
     const { data: a } = await supabase.from("audit_log").select("*").order("performed_at", { ascending: false });
+    const { data: dv } = await supabase.from("devices").select("*").order("name");
     if (e1 || e2) {
       setError("Could not connect to the database. Check Supabase settings.");
       setReagents([]);
@@ -80,6 +82,7 @@ export default function App() {
     setPresets(p || []);
     setStaffAccounts(s || []);
     setActivityLog(a || []);
+    setDevices(dv || []);
   }
 
   async function logActivity(action, entity, description) {
@@ -109,6 +112,7 @@ export default function App() {
       name: entry.name,
       department: entry.department,
       item_type: entry.itemType,
+      device: entry.device || "",
       lot_number: entry.lotNumber,
       unit: entry.unit,
       quantity_received: entry.quantityReceived,
@@ -296,11 +300,11 @@ export default function App() {
           />
         )}
         {tab === "reports" && <Reports reagents={reagents} logs={logs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
-        {tab === "settings" && (role === "admin" || role === "super") && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} reload={() => { ensureConfig(); loadAll(); }} />}
+        {tab === "settings" && (role === "admin" || role === "super") && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} reload={() => { ensureConfig(); loadAll(); }} />}
         {tab === "deletions" && role === "super" && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}
       </main>
 
-      {showWizard && <ReceiveWizard presets={presets} role={role} departments={config.departments || []} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
+      {showWizard && <ReceiveWizard presets={presets} devices={devices} role={role} departments={config.departments || []} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
       {showLog && <LogConsumptionModal reagents={reagents.filter((r) => !r.deleted)} onClose={() => setShowLog(false)} onSubmit={recordConsumption} />}
       {editReagent && <EditReagentModal reagent={editReagent} onClose={() => setEditReagent(null)} onSave={saveEditedReagent} />}
       {editLog && <EditLogModal log={editLog} onClose={() => setEditLog(null)} onSave={saveEditedLog} />}
@@ -360,6 +364,8 @@ function GaugeBar({ pct, color }) {
 }
 
 function Dashboard({ groups, counts, departments, role, onDeleteReagent, onSelect }) {
+  const [search, setSearch] = useState("");
+
   if (groups.length === 0) {
     return (
       <div style={{ textAlign: "center", padding: "80px 20px", color: "#7B8E8A" }}>
@@ -369,15 +375,28 @@ function Dashboard({ groups, counts, departments, role, onDeleteReagent, onSelec
       </div>
     );
   }
-  const byDept = departments.map((d) => ({ dept: d, items: groups.filter((g) => g.department === d) })).filter((x) => x.items.length);
+  const term = search.trim().toLowerCase();
+  const filteredGroups = term
+    ? groups.filter((g) => g.name.toLowerCase().includes(term) || g.fefo.lot_number.toLowerCase().includes(term) || (g.fefo.device || "").toLowerCase().includes(term))
+    : groups;
+  const byDept = departments.map((d) => ({ dept: d, items: filteredGroups.filter((g) => g.department === d) })).filter((x) => x.items.length);
 
   return (
     <div>
+      <input
+        placeholder="Search reagent, lot number, or device…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        style={{ width: "100%", border: "1px solid #C7D1CE", borderRadius: 8, padding: "10px 14px", fontSize: 14, marginBottom: 18, boxSizing: "border-box" }}
+      />
       <div style={{ display: "flex", gap: 12, marginBottom: 28, flexWrap: "wrap" }}>
         <StatCard status="red" count={counts.red} label="Critical — expired or out" />
         <StatCard status="yellow" count={counts.yellow} label="Watch — expiring or low" />
         <StatCard status="green" count={counts.green} label="Stable" />
       </div>
+      {byDept.length === 0 && (
+        <div style={{ textAlign: "center", padding: "40px 20px", color: "#8A9694", fontSize: 13.5 }}>No matches for "{search}".</div>
+      )}
       {byDept.map(({ dept, items }) => (
         <div key={dept} style={{ marginBottom: 26 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -398,7 +417,7 @@ function Dashboard({ groups, counts, departments, role, onDeleteReagent, onSelec
                       {g.flagged && <ClipboardX size={13} color="#B8860B" title="Inspection issue on receipt" />}
                     </div>
                     <div style={{ fontSize: 12.5, color: "#7B8E8A", fontFamily: "'IBM Plex Mono', monospace", marginTop: 2 }}>
-                      Lot {g.fefo.lot_number} · {g.fefo.current_quantity} {g.unit} left · {g.items.length > 1 ? `${g.items.length} lots` : "1 lot"}
+                      Lot {g.fefo.lot_number} · {g.fefo.current_quantity} {g.unit} left · {g.items.length > 1 ? `${g.items.length} lots` : "1 lot"}{g.fefo.device ? ` · ${g.fefo.device}` : ""}
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
@@ -781,8 +800,11 @@ function LogConsumptionModal({ reagents, onClose, onSubmit }) {
           </select>
         </label>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-          <label style={{ ...labelStyle, flex: 1 }}>Reagent
-            <select style={inputStyle} value={name} onChange={(e) => setName(e.target.value)}>{names.map((n) => <option key={n} value={n}>{n}</option>)}</select>
+          <label style={{ ...labelStyle, flex: 1 }}>Reagent (type to search)
+            <input list="log-use-names" style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="Search reagent name" />
+            <datalist id="log-use-names">
+              {names.map((n) => <option key={n} value={n} />)}
+            </datalist>
           </label>
           <button type="button" onClick={() => setShowScanner(true)} style={{ background: "#F0F3F2", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 10px" }}><ScanLine size={16} /></button>
         </div>

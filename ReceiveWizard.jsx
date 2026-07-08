@@ -13,13 +13,12 @@ const INSPECTION_ITEMS = [
 const inputStyle = { width: "100%", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 11px", fontSize: 14, marginTop: 4, boxSizing: "border-box" };
 const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
 
-export default function ReceiveWizard({ presets, role, departments, onClose, onSubmit }) {
+export default function ReceiveWizard({ presets, devices, role, departments, onClose, onSubmit }) {
   const [step, setStep] = useState(1);
-  const [customName, setCustomName] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
 
   const [form, setForm] = useState({
-    name: "", department: departments[0] || "", unit: "mL", itemType: "Reagent",
+    name: "", department: departments[0] || "", unit: "mL", itemType: "Reagent", device: "",
     lotNumber: "", quantityReceived: "", expiryDate: "",
     receivedBy: "", receivedDate: new Date().toISOString().slice(0, 10),
     lowStockThreshold: "",
@@ -34,14 +33,18 @@ export default function ReceiveWizard({ presets, role, departments, onClose, onS
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  function pickPreset(name) {
-    const p = presets.find((x) => x.name === name);
+  function handleNameChange(e) {
+    const value = e.target.value;
+    const p = presets.find((x) => x.name === value);
     if (p) setForm((f) => ({ ...f, name: p.name, department: p.department, unit: p.unit }));
+    else setForm((f) => ({ ...f, name: value }));
   }
 
   function toggle(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
   }
+
+  const devicesForDept = (devices || []).filter((d) => d.department === form.department);
 
   const step1Valid = form.name && form.lotNumber && form.quantityReceived && form.expiryDate && form.receivedBy && form.receivedDate;
 
@@ -64,25 +67,22 @@ export default function ReceiveWizard({ presets, role, departments, onClose, onS
 
         {step === 1 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
-            <label style={labelStyle}>Item
-              {presets.length > 0 && !customName ? (
-                <select style={inputStyle} value={form.name} onChange={(e) => pickPreset(e.target.value)}>
-                  <option value="">Select from list…</option>
-                  {presets.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
-                </select>
-              ) : (
-                <input style={inputStyle} value={form.name} onChange={set("name")} placeholder="e.g. Glucose reagent" />
-              )}
-              {presets.length > 0 && (
-                <button type="button" onClick={() => setCustomName((c) => !c)} style={{ background: "none", border: "none", color: "#0F7173", fontSize: 11.5, fontWeight: 600, marginTop: 4, padding: 0 }}>
-                  {customName ? "Choose from preset list instead" : "Type a name not in the list"}
-                </button>
-              )}
+            <label style={labelStyle}>Item (type to search)
+              <input list="reagent-presets-list" style={inputStyle} value={form.name} onChange={handleNameChange} placeholder="Search or type a new name" />
+              <datalist id="reagent-presets-list">
+                {presets.map((p) => <option key={p.id} value={p.name} />)}
+              </datalist>
             </label>
             <label style={labelStyle}>Department
-              <select style={inputStyle} value={form.department} onChange={set("department")}>
+              <select style={inputStyle} value={form.department} onChange={(e) => setForm((f) => ({ ...f, department: e.target.value, device: "" }))}>
                 {departments.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
+            </label>
+            <label style={labelStyle}>Device / analyzer (optional, type to search)
+              <input list="devices-list" style={inputStyle} value={form.device} onChange={set("device")} placeholder="e.g. Cobas c311" />
+              <datalist id="devices-list">
+                {devicesForDept.map((d) => <option key={d.id} value={d.name} />)}
+              </datalist>
             </label>
             <label style={labelStyle}>Type
               <select style={inputStyle} value={form.itemType} onChange={set("itemType")}>
