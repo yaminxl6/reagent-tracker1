@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Beaker, TrendingDown, Plus, Users, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History } from "lucide-react";
+import { Beaker, TrendingDown, Plus, Users, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Login from "./Login";
 import Settings from "./Settings";
 import BarcodeScanner from "./BarcodeScanner";
 import ReceiveWizard, { YesNoRow } from "./ReceiveWizard";
+import Charts from "./Charts";
 
 const DEPT_PALETTE = ["#0F7173", "#B5473A", "#8A5A2B", "#5A6ACF", "#2F8F5B", "#B8860B", "#7A4FA3", "#C1432B"];
 function deptColor(dept, list) {
@@ -301,6 +302,7 @@ export default function App() {
         )}
         {tab === "reports" && <Reports reagents={reagents} logs={logs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
         {tab === "settings" && (role === "admin" || role === "super") && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} reload={() => { ensureConfig(); loadAll(); }} />}
+        {tab === "charts" && (role === "admin" || role === "super") && <Charts reagents={reagents} logs={logs} />}
         {tab === "deletions" && role === "super" && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}
       </main>
 
@@ -328,6 +330,7 @@ function Header({ tab, setTab, role, onAdd, onLog, onLogout, onEnableNotif }) {
           <NavBtn active={tab === "dashboard" || tab === "detail"} onClick={() => setTab("dashboard")} icon={<LayoutGrid size={15} />} label="Dashboard" />
           <NavBtn active={tab === "reports"} onClick={() => setTab("reports")} icon={<FileText size={15} />} label="Reports" />
           {(role === "admin" || role === "super") && <NavBtn active={tab === "settings"} onClick={() => setTab("settings")} icon={<SlidersHorizontal size={15} />} label="Settings" />}
+          {(role === "admin" || role === "super") && <NavBtn active={tab === "charts"} onClick={() => setTab("charts")} icon={<BarChart3 size={15} />} label="Charts" />}
           {role === "super" && <NavBtn active={tab === "deletions"} onClick={() => setTab("deletions")} icon={<History size={15} />} label="Activity" />}
           <button onClick={onEnableNotif} title="Enable browser alerts" style={{ background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "7px 9px" }}><Bell size={14} /></button>
           <div style={{ width: 1, height: 22, background: "#39494A", margin: "0 4px" }} />
