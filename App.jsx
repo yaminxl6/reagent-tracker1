@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Beaker, TrendingDown, Plus, Users, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator } from "lucide-react";
+import { Beaker, TrendingDown, Plus, Users, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator, Home as Home2, Cpu } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Login from "./Login";
 import Settings from "./Settings";
@@ -9,6 +9,8 @@ import Charts from "./Charts";
 import ReagentImport from "./ReagentImport";
 import FridgeInventory from "./FridgeInventory";
 import SearchableSelect from "./SearchableSelect";
+import Home from "./Home";
+import DeviceUsage from "./DeviceUsage";
 
 const DEPT_PALETTE = ["#0F7173", "#B5473A", "#8A5A2B", "#5A6ACF", "#2F8F5B", "#B8860B", "#7A4FA3", "#C1432B"];
 function deptColor(dept, list) {
@@ -50,7 +52,7 @@ export default function App() {
   const [staffAccounts, setStaffAccounts] = useState([]);
   const [devices, setDevices] = useState([]);
   const [activityLog, setActivityLog] = useState([]);
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTab] = useState("home");
   const [showWizard, setShowWizard] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showLog, setShowLog] = useState(false);
@@ -341,14 +343,16 @@ export default function App() {
           </div>
         )}
 
-        {tab === "dashboard" && <Dashboard groups={groups} counts={counts} departments={config.departments || []} role={role} onDeleteReagent={deleteReagent} onSelect={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
+        {tab === "home" && <Home counts={counts} onNavigate={setTab} />}
+        {tab === "stock" && <Dashboard groups={groups} counts={counts} departments={config.departments || []} role={role} onDeleteReagent={deleteReagent} onSelect={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
+        {tab === "devices" && <DeviceUsage />}
         {tab === "detail" && selectedGroup && (
           <DetailView
             group={groups.find((g) => g.name === selectedGroup.name) || selectedGroup}
             logs={logs.filter((l) => !l.deleted && (groups.find((g) => g.name === selectedGroup.name)?.items || []).some((i) => i.id === l.reagent_id))}
             role={role}
             expiryWarningDays={config?.expiry_warning_days}
-            onBack={() => setTab("dashboard")}
+            onBack={() => setTab("stock")}
             onEditReagent={setEditReagent} onDeleteReagent={deleteReagent}
             onEditLog={setEditLog} onDeleteLog={deleteLog}
           />
@@ -386,9 +390,11 @@ function Header({ tab, setTab, role, onAdd, onImport, onLog, onLogout, onEnableN
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <NavBtn active={tab === "dashboard" || tab === "detail"} onClick={() => setTab("dashboard")} icon={<LayoutGrid size={15} />} label="Dashboard" />
-          <NavBtn active={tab === "reports"} onClick={() => setTab("reports")} icon={<FileText size={15} />} label="Reports" />
+          <NavBtn active={tab === "home"} onClick={() => setTab("home")} icon={<Home2 size={15} />} label="Home" />
+          <NavBtn active={tab === "stock" || tab === "detail"} onClick={() => setTab("stock")} icon={<LayoutGrid size={15} />} label="Stock" />
           <NavBtn active={tab === "fridges"} onClick={() => setTab("fridges")} icon={<Refrigerator size={15} />} label="Fridges" />
+          <NavBtn active={tab === "devices"} onClick={() => setTab("devices")} icon={<Cpu size={15} />} label="Devices" />
+          <NavBtn active={tab === "reports"} onClick={() => setTab("reports")} icon={<FileText size={15} />} label="Reports" />
           {(["admin","super","owner"].includes(role)) && <NavBtn active={tab === "settings"} onClick={() => setTab("settings")} icon={<SlidersHorizontal size={15} />} label="Settings" />}
           {(["admin","super","owner"].includes(role)) && <NavBtn active={tab === "charts"} onClick={() => setTab("charts")} icon={<BarChart3 size={15} />} label="Charts" />}
           {["super","owner"].includes(role) && <NavBtn active={tab === "deletions"} onClick={() => setTab("deletions")} icon={<History size={15} />} label="Activity" />}

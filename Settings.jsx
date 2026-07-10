@@ -2,6 +2,15 @@ import React, { useState } from "react";
 import { Trash2, Plus, Save, Eye, EyeOff } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
+const THEME_PRESETS = [
+  { name: "Ocean Teal", colors: { accent1: "#0F9B8E", accent2: "#3E6ACF", headerStart: "#123C4A", headerEnd: "#1B2B2E" } },
+  { name: "Deep Navy",  colors: { accent1: "#3E6ACF", accent2: "#5FA8D3", headerStart: "#0B1F3A", headerEnd: "#132A4D" } },
+  { name: "Emerald",    colors: { accent1: "#2F8F5B", accent2: "#0F9B8E", headerStart: "#0E3B2A", headerEnd: "#1B2B2E" } },
+  { name: "Plum",       colors: { accent1: "#7A4FA3", accent2: "#B5473A", headerStart: "#2B1B3A", headerEnd: "#1B2B2E" } },
+  { name: "Amber Slate",colors: { accent1: "#D8862B", accent2: "#3E6ACF", headerStart: "#2A2420", headerEnd: "#1B2B2E" } },
+  { name: "Rose Gold",  colors: { accent1: "#B5473A", accent2: "#D8862B", headerStart: "#3A1F1B", headerEnd: "#1B2B2E" } },
+];
+
 export default function Settings({ config, presets, role, staffAccounts, devices, logActivity, reload }) {
   const departments = config.departments || [];
   const [newPreset, setNewPreset] = useState({ name: "", department: departments[0] || "", unit: "mL" });
@@ -301,7 +310,19 @@ export default function Settings({ config, presets, role, staffAccounts, devices
       </div>
 
       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 30 }}>THEME COLORS</div>
-      <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Pick your own colors — applies across the whole app after you save and refresh.</div>
+      <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Pick a ready-made combination, or fine-tune your own below.</div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+        {THEME_PRESETS.map((p) => (
+          <button key={p.name} onClick={() => setTheme(p.colors)} style={{ background: "#fff", border: "2px solid " + (JSON.stringify(theme) === JSON.stringify(p.colors) ? p.colors.accent1 : "#E1E8E5"), borderRadius: 10, padding: 10, cursor: "pointer", width: 130 }}>
+            <div style={{ height: 30, borderRadius: 6, background: `linear-gradient(135deg, ${p.colors.headerStart} 0%, ${p.colors.headerEnd} 100%)`, marginBottom: 6, display: "flex", alignItems: "center", gap: 4, padding: "0 6px" }}>
+              <span style={{ width: 12, height: 12, borderRadius: 3, background: p.colors.accent1 }} />
+              <span style={{ width: 12, height: 12, borderRadius: 3, background: p.colors.accent2 }} />
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, textAlign: "left" }}>{p.name}</div>
+          </button>
+        ))}
+      </div>
+      <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12, fontWeight: 600 }}>Or fine-tune manually:</div>
       <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
           <ColorField label="Primary buttons" value={theme.accent1} onChange={(v) => setTheme((t) => ({ ...t, accent1: v }))} />

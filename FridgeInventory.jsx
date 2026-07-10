@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Trash2, Download, Refrigerator, Printer } from "lucide-react";
+import { Plus, Trash2, Download, Refrigerator, Printer, Save, CheckCircle2 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 const inputStyle = { border: "1px solid #C7D1CE", borderRadius: 6, padding: "6px 8px", fontSize: 13, boxSizing: "border-box" };
@@ -10,16 +10,24 @@ function displayMonth(monthISO) {
   const [y, m] = monthISO.split("-");
   return `${m}-${y}`;
 }
+function isTempId(id) {
+  return String(id).startsWith("temp-");
+}
 
 export default function FridgeInventory({ username, logActivity }) {
   const [all, setAll] = useState(null);
   const [month, setMonth] = useState(todayMonth());
   const [refrigeratorName, setRefrigeratorName] = useState("");
   const [countedBy, setCountedBy] = useState("");
+  const [dirty, setDirty] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
+  const [deletedIds, setDeletedIds] = useState([]);
 
   async function loadAll() {
     const { data } = await supabase.from("fridge_inventory").select("*").order("row_order");
     setAll(data || []);
+    setDirty(false);
+    setDeletedIds([]);
   }
   useEffect(() => { loadAll(); }, []);
 
@@ -38,30 +46,55 @@ export default function FridgeInventory({ username, logActivity }) {
     return map;
   }, [currentRows]);
 
-  async function addRow(deviceGroup) {
+  function addRow(deviceGroup) {
     const maxOrder = currentRows.reduce((m, r) => Math.max(m, r.row_order || 0), 0);
-    const { data } = await supabase.from("fridge_inventory").insert({
+    const tempRow = {
+      id: `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       month, refrigerator_name: refrigeratorName, counted_by: countedBy,
-      device_group: deviceGroup, item_name: "", lot_number: "", quantity: "", row_order: maxOrder + 1,
-    }).select().single();
-    await logActivity?.("fridge_count", "fridge", `${refrigeratorName} — added row in ${deviceGroup || "General"}`);
-    setAll((a) => [...a, data]);
+      device_group: deviceGroup, item_name: "", lot_number: "", quantity: "", expiry_date: null, row_order: maxOrder + 1,
+    };
+    setAll((a) => [...a, tempRow]);
+    setDirty(true);
   }
 
-  async function addSection() {
+  function addSection() {
     const name = prompt("New device/section name (e.g. VIDAS):");
     if (!name) return;
     addRow(name);
   }
 
-  async function updateRow(id, field, value) {
+  function updateRow(id, field, value) {
     setAll((a) => a.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
-    await supabase.from("fridge_inventory").update({ [field]: value }).eq("id", id);
+    setDirty(true);
   }
 
-  async function deleteRow(id) {
-    await supabase.from("fridge_inventory").delete().eq("id", id);
+  function deleteRow(id) {
     setAll((a) => a.filter((r) => r.id !== id));
+    if (!isTempId(id)) setDeletedIds((d) => [...d, id]);
+    setDirty(true);
+  }
+
+  async function saveAll() {
+    setSaveMsg("Saving…");
+    if (deletedIds.length) {
+      await supabase.from("fridge_inventory").delete().in("id", deletedIds);
+    }
+    const toInsert = currentRows.filter((r) => isTempId(r.id)).map((r) => {
+      const { id, ...rest } = r;
+      return rest;
+    });
+    const toUpdate = currentRows.filter((r) => !isTempId(r.id));
+
+    if (toInsert.length) await supabase.from("fridge_inventory").insert(toInsert);
+    for (const r of toUpdate) {
+      await supabase.from("fridge_inventory").update({
+        item_name: r.item_name, lot_number: r.lot_number, quantity: r.quantity, expiry_date: r.expiry_date, counted_by: r.counted_by,
+      }).eq("id", r.id);
+    }
+    await logActivity?.("fridge_count", "fridge", `${refrigeratorName} — ${month}: ${toInsert.length} new row(s), ${toUpdate.length} updated`);
+    await loadAll();
+    setSaveMsg("Saved ✓");
+    setTimeout(() => setSaveMsg(""), 2500);
   }
 
   async function exportExcel() {
@@ -79,12 +112,14 @@ export default function FridgeInventory({ username, logActivity }) {
     <div>
       <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, flexWrap: "wrap", gap: 10 }}>
         <h2 style={{ fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}><Refrigerator size={20} /> Fridge Inventory</h2>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {saveMsg && <span style={{ fontSize: 12.5, color: "#2F6B4F", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><CheckCircle2 size={13} /> {saveMsg}</span>}
           <button onClick={() => window.print()} style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Printer size={14} /> Print</button>
           <button onClick={exportExcel} style={{ background: "var(--accent-2)", color: "#fff", border: "none", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Download size={14} /> Export Excel</button>
+          <button onClick={saveAll} disabled={!dirty} style={{ background: dirty ? "var(--accent-1)" : "#C7D1CE", color: "#fff", border: "none", borderRadius: 7, padding: "8px 14px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, cursor: dirty ? "pointer" : "default" }}><Save size={14} /> Save</button>
         </div>
       </div>
-      <div className="no-print" style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 20 }}>Monthly stock count sheet — matches your paper form. Not shown in Reports.</div>
+      <div className="no-print" style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 20 }}>Monthly stock count sheet — matches your paper form. Not shown in Reports. Edits are local until you press <b>Save</b>.</div>
 
       <div className="no-print" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
         <label style={labelStyle}>Month
@@ -156,9 +191,14 @@ export default function FridgeInventory({ username, logActivity }) {
 
           <datalist id="item-suggestions">{itemSuggestions.map((n) => <option key={n} value={n} />)}</datalist>
 
-          <button onClick={addSection} className="no-print" style={{ marginTop: 14, background: "none", border: "1px dashed var(--accent-1)", color: "var(--accent-1)", borderRadius: 7, padding: "8px 14px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-            <Plus size={14} /> Add device section {deviceSuggestions.length > 0 ? `(existing: ${deviceSuggestions.join(", ")})` : ""}
-          </button>
+          <div className="no-print" style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center" }}>
+            <button onClick={addSection} style={{ background: "none", border: "1px dashed var(--accent-1)", color: "var(--accent-1)", borderRadius: 7, padding: "8px 14px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+              <Plus size={14} /> Add device section {deviceSuggestions.length > 0 ? `(existing: ${deviceSuggestions.join(", ")})` : ""}
+            </button>
+            <button onClick={saveAll} disabled={!dirty} style={{ background: dirty ? "var(--accent-1)" : "#C7D1CE", color: "#fff", border: "none", borderRadius: 7, padding: "8px 16px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, cursor: dirty ? "pointer" : "default" }}>
+              <Save size={14} /> Save {dirty ? "(unsaved changes)" : ""}
+            </button>
+          </div>
         </div>
       )}
     </div>
