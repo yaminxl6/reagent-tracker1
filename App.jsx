@@ -276,7 +276,8 @@ export default function App() {
   }, [groups]);
 
   useEffect(() => {
-    if (!reagents || Notification?.permission !== "granted") return;
+    if (typeof Notification === "undefined") return;
+    if (!reagents || Notification.permission !== "granted") return;
     if (counts.red === 0) return;
     const key = `notified-${todayISO()}`;
     if (localStorage.getItem(key)) return;
@@ -284,7 +285,13 @@ export default function App() {
     localStorage.setItem(key, "1");
   }, [counts, reagents]);
 
-  function enableNotifications() { Notification.requestPermission(); }
+  function enableNotifications() {
+    if (typeof Notification === "undefined") {
+      alert("Browser notifications aren't supported in this browser (common in in-app browsers like WhatsApp's — try opening the link in Chrome or Safari instead).");
+      return;
+    }
+    Notification.requestPermission();
+  }
 
   if (!config || reagents === null || logs === null) {
     return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "IBM Plex Mono, monospace", color: "#4A5A5C" }}>Loading…</div>;
