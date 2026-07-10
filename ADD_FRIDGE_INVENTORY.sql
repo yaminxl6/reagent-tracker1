@@ -1,15 +1,20 @@
--- Run once in the SQL Editor of this project's Supabase project.
--- Monthly stock counts of what's kept inside fridges/equipment — completely
--- separate from reagents/consumption_logs, so it never shows up in Reports.
+-- Run once in the SQL Editor. If you already ran the old
+-- ADD_FRIDGE_INVENTORY.sql (location_type/location_name/count_date
+-- version), run this to replace it with the new layout that matches your
+-- paper form (device sections, lot number, fraction-friendly quantity).
+drop table if exists fridge_inventory;
+
 create table if not exists fridge_inventory (
   id uuid primary key default gen_random_uuid(),
-  location_type text not null default 'Fridge',   -- 'Fridge' or 'Equipment'
-  location_name text not null,                     -- e.g. "Fridge 1", "Cobas c311"
+  month text not null,              -- "07-2026" style, matches the paper form
+  refrigerator_name text not null,  -- "Refrigerator: X" on the form
+  counted_by text not null default '',
+  device_group text not null default '',  -- section header, e.g. "VIDAS"
   item_name text not null,
-  unit text not null default 'unit',
-  quantity numeric not null default 0,
-  counted_by text not null,
-  count_date date not null default current_date,
+  lot_number text not null default '',    -- the "Unit" column on the paper form
+  quantity text not null default '',      -- free text so "½", "1 1/2" etc. work
+  expiry_date date,
+  row_order integer not null default 0,
   created_at timestamptz default now()
 );
 alter table fridge_inventory enable row level security;

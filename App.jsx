@@ -1,68 +1,64 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { FlaskConical, LayoutGrid, Grid3x3, SlidersHorizontal, LogOut, Check, X, Trash2, Download, ClipboardCheck, Table2, FolderOpen, BarChart3, PackageCheck, Award, FileText, Users, Calendar, Menu, Home, ChevronDown, ChevronRight } from "lucide-react";
+import { Beaker, TrendingDown, Plus, Users, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Login from "./Login";
 import Settings from "./Settings";
-import OwnerSettings from "./OwnerSettings";
-import CustomTables from "./CustomTables";
-import Files from "./Files";
-import LeveyJennings from "./Charts";
-import Riqas from "./Riqas";
-import StaffMembers from "./StaffMembers";
-import Schedule from "./Schedule";
-import ShiftTemplates from "./ShiftTemplates";
-import HomePage from "./HomePage";
-import AuditTrail from "./AuditTrail";
-import SmartSearch from "./SmartSearch";
-import KPI from "./KPI";
-import { evaluateWestgard, zScore, RULE_DESCRIPTIONS } from "./westgard";
+import BarcodeScanner from "./BarcodeScanner";
+import ReceiveWizard, { YesNoRow } from "./ReceiveWizard";
+import Charts from "./Charts";
+import ReagentImport from "./ReagentImport";
+import FridgeInventory from "./FridgeInventory";
+import SearchableSelect from "./SearchableSelect";
 
 const DEPT_PALETTE = ["#0F7173", "#B5473A", "#8A5A2B", "#5A6ACF", "#2F8F5B", "#B8860B", "#7A4FA3", "#C1432B"];
 function deptColor(dept, list) {
   const i = Math.max(0, list.indexOf(dept));
   return DEPT_PALETTE[i % DEPT_PALETTE.length];
 }
+const INSPECTION_KEYS = ["intact_container", "complete_compound", "expiration_validity", "lot_matches_kit", "storage_condition_ok"];
+const ENTITY_LABELS = { reagent: "Reagent lot", log: "Usage log", config: "Settings", preset: "Preset", device: "Device", staff: "Employee account", department: "Department", fridge: "Fridge/equipment count" };
+
 const todayISO = () => new Date().toISOString().slice(0, 10);
+const daysBetween = (a, b) => Math.round((new Date(a) - new Date(b)) / 86400000);
 const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString() : "");
-function daysInMonth(month) {
-  const [y, m] = month.split("-").map(Number);
-  return new Date(y, m, 0).getDate();
-}
-function firstOfMonth() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+
+function statusOf(item, expiryWarningDays) {
+  const dExp = daysBetween(item.expiry_date, todayISO());
+  const lowStock = item.current_quantity <= item.low_stock_threshold;
+  if (dExp < 0 || item.current_quantity <= 0) return "red";
+  if (dExp <= (expiryWarningDays ?? 30) || lowStock) return "yellow";
+  return "green";
 }
 
-const COLOR_META = {
-  pending: { bg: "#F0F3F2", fg: "#516361" },
-  green: { bg: "#E8F2EC", fg: "#2F6B4F" },
-  orange: { bg: "#FBF3DF", fg: "#B8860B" },
-  red: { bg: "#FBEAE6", fg: "#C1432B" },
+function hasInspectionIssue(item) {
+  return INSPECTION_KEYS.some((k) => item[k] === false);
+}
+
+const STATUS_META = {
+  red: { label: "Critical", color: "#C1432B", bg: "#FBEAE6" },
+  yellow: { label: "Watch", color: "#B8860B", bg: "#FBF3DF" },
+  green: { label: "Stable", color: "#2F6B4F", bg: "#E8F2EC" },
 };
-const colorRank = { pending: 0, green: 0, orange: 1, red: 2 };
-
-const inputStyle = { width: "100%", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 11px", fontSize: 14, boxSizing: "border-box" };
-const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
 
 export default function App() {
   const [config, setConfig] = useState(null);
-  const [role, setRole] = useState(() => localStorage.getItem("qc_role") || null);
-  const [username, setUsername] = useState(() => localStorage.getItem("qc_username") || "");
-  const [permissions, setPermissions] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("qc_permissions") || "[]"); } catch { return []; }
-  });
-  const [panels, setPanels] = useState(null);
-  const [baselines, setBaselines] = useState([]);
-  const [controlLots, setControlLots] = useState([]);
-  const [entries, setEntries] = useState(null);
+  const [role, setRole] = useState(() => localStorage.getItem("reagent_role") || null);
+  const [username, setUsername] = useState(() => localStorage.getItem("reagent_username") || "");
+  const [reagents, setReagents] = useState(null);
+  const [logs, setLogs] = useState(null);
+  const [presets, setPresets] = useState([]);
   const [staffAccounts, setStaffAccounts] = useState([]);
-  const [portalAccounts, setPortalAccounts] = useState([]);
-  const [pinnedTables, setPinnedTables] = useState([]);
-  const [allTables, setAllTables] = useState([]);
-  const [tab, setTab] = useState("home");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [devices, setDevices] = useState([]);
+  const [activityLog, setActivityLog] = useState([]);
+  const [tab, setTab] = useState("dashboard");
+  const [showWizard, setShowWizard] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [showLog, setShowLog] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [editReagent, setEditReagent] = useState(null);
+  const [editLog, setEditLog] = useState(null);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   async function ensureConfig() {
     let { data } = await supabase.from("app_config").select("*").eq("id", 1).maybeSingle();
@@ -75,27 +71,28 @@ export default function App() {
   }
 
   async function loadAll() {
-    const { data: p, error: e1 } = await supabase.from("qc_panels").select("*").eq("deleted", false).order("name");
-    const { data: e, error: e2 } = await supabase.from("qc_entries").select("*").order("date", { ascending: false });
+    const { data: r, error: e1 } = await supabase.from("reagents").select("*").order("expiry_date");
+    const { data: l, error: e2 } = await supabase.from("consumption_logs").select("*");
+    const { data: p } = await supabase.from("reagent_presets").select("*").order("name");
     const { data: s } = await supabase.from("staff_accounts").select("*").order("username");
-    const { data: b } = await supabase.from("qc_baselines").select("*").eq("active", true);
-    const { data: cl } = await supabase.from("qc_control_lots").select("*").order("received_date", { ascending: false });
-    const { data: pa } = await supabase.from("portal_accounts").select("*").order("username");
-    const { data: ct } = await supabase.from("custom_tables").select("id,title,department,pinned,nav_icon").eq("deleted", false).order("title");
+    const { data: a } = await supabase.from("audit_log").select("*").order("performed_at", { ascending: false });
+    const { data: dv } = await supabase.from("devices").select("*").order("name");
     if (e1 || e2) {
       setError("Could not connect to the database. Check Supabase settings.");
-      setPanels([]);
-      setEntries([]);
+      setReagents([]);
+      setLogs([]);
       return;
     }
-    setPanels(p || []);
-    setEntries(e || []);
+    setReagents(r || []);
+    setLogs(l || []);
+    setPresets(p || []);
     setStaffAccounts(s || []);
-    setBaselines(b || []);
-    setControlLots(cl || []);
-    setPortalAccounts(pa || []);
-    setPinnedTables((ct || []).filter((t) => t.pinned));
-    setAllTables(ct || []);
+    setActivityLog(a || []);
+    setDevices(dv || []);
+  }
+
+  async function logActivity(action, entity, description) {
+    await supabase.from("audit_log").insert({ action, entity, description, performed_by: username });
   }
 
   useEffect(() => {
@@ -103,188 +100,205 @@ export default function App() {
     loadAll();
   }, []);
 
-  function handleLogin(newRole, newUsername, newPermissions) {
-    localStorage.setItem("qc_role", newRole);
-    localStorage.setItem("qc_username", newUsername);
-    localStorage.setItem("qc_permissions", JSON.stringify(newPermissions || []));
+  function handleLogin(newRole, newUsername) {
+    localStorage.setItem("reagent_role", newRole);
+    localStorage.setItem("reagent_username", newUsername);
     setRole(newRole);
     setUsername(newUsername);
-    setPermissions(newPermissions || []);
   }
   function logout() {
-    supabase.from("audit_log").insert({ action: "logout", entity: "auth", description: username, performed_by: username });
-    localStorage.removeItem("qc_role");
-    localStorage.removeItem("qc_username");
-    localStorage.removeItem("qc_permissions");
+    localStorage.removeItem("reagent_role");
+    localStorage.removeItem("reagent_username");
     setRole(null);
     setUsername("");
-    setPermissions([]);
   }
 
-  async function logActivity(action, description) {
-    await supabase.from("audit_log").insert({ action, entity: "qc_entry", description, performed_by: username });
-  }
-
-  // Evaluate one analyte's value against its Westgard baseline (establishing it
-  // automatically from the first 20 points if needed).
-  async function evaluateAnalyte(panel, analyteName, lot, value, date) {
-    const { data: baseline } = await supabase
-      .from("qc_baselines").select("*").eq("panel_id", panel.id).eq("analyte_name", analyteName).eq("lot_number", lot).eq("active", true).maybeSingle();
-
-    if (!baseline) {
-      const { data: pastEntries } = await supabase
-        .from("qc_entries").select("values").eq("panel_id", panel.id).eq("lot_number", lot).eq("deleted", false);
-      const pastValues = (pastEntries || []).map((e) => e.values?.[analyteName]).filter((v) => v !== undefined && v !== null);
-      const countAfter = pastValues.length + 1;
-      if (countAfter >= 20) {
-        const values = [...pastValues, value];
-        const mean = values.reduce((s, v) => s + v, 0) / values.length;
-        const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / (values.length - 1);
-        const sd = Math.sqrt(variance) || 0.0001;
-        await supabase.from("qc_baselines").insert({ panel_id: panel.id, analyte_name: analyteName, lot_number: lot, mean, sd, point_count: values.length });
-      }
-      return { color: "pending", flags: [], z: null };
-    }
-
-    const z = zScore(value, baseline.mean, baseline.sd);
-    const { flags, color } = evaluateWestgard(z);
-    return { color, flags, z };
-  }
-
-  // Submit (or overwrite) the whole day's panel entry — one row per panel per date.
-  async function submitEntry(panel, date, valuesInput, note, existingEntry) {
-    setBusy(true);
-    try {
-      const lot = panel.lot_number || "";
-      const values = {};
-      const colors = {};
-      const flags = {};
-      const reviews = { ...(existingEntry?.reviews || {}) };
-      for (const analyte of panel.analytes || []) {
-        const raw = valuesInput[analyte.name];
-        if (raw === undefined || raw === "" || raw === null) continue;
-        const value = Number(raw);
-        values[analyte.name] = value;
-        const { color, flags: f } = await evaluateAnalyte(panel, analyte.name, lot, value, date);
-        colors[analyte.name] = color;
-        flags[analyte.name] = f;
-        const prevValue = existingEntry?.values?.[analyte.name];
-        if (prevValue === undefined || prevValue !== value) {
-          reviews[analyte.name] = { status: "pending", note: "", by: null, at: null };
-        }
-      }
-
-      if (existingEntry) {
-        await supabase.from("qc_entries").update({
-          values, colors, flags, note: note || "", edited_by: username, edited_at: new Date().toISOString(), reviews,
-        }).eq("id", existingEntry.id);
-        await logActivity("edit", `${panel.name} — ${date} (edited by ${username})`);
-      } else {
-        for (const name of Object.keys(values)) reviews[name] = { status: "pending", note: "", by: null, at: null };
-        await supabase.from("qc_entries").insert({
-          panel_id: panel.id, date, lot_number: lot, values, colors, flags, reviews, done_by: username, note: note || "",
-        });
-        await logActivity("add", `${panel.name} — ${date}`);
-      }
-      loadAll();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteEntry(entry) {
-    if (role !== "admin" && role !== "super") return;
-    if (!confirm("Remove this day's entry? It stays visible in Reports for audit purposes.")) return;
-    const panel = panels.find((p) => p.id === entry.panel_id);
-    await supabase.from("qc_entries").update({ deleted: true, deleted_by: username, deleted_at: new Date().toISOString() }).eq("id", entry.id);
-    await logActivity("delete", `${panel ? panel.name : "Unknown"} — ${entry.date}`);
-    loadAll();
-  }
-
-  // Approve or decline ONE analyte's result within a day's entry — the rest are untouched.
-  async function reviewAnalyte(entry, analyteName, decision, note) {
-    if (role !== "admin" && role !== "super") return;
-    const reviews = { ...(entry.reviews || {}) };
-    reviews[analyteName] = { status: decision, note: note || "", by: username, at: new Date().toISOString() };
-    await supabase.from("qc_entries").update({ reviews }).eq("id", entry.id);
-    const panel = panels.find((p) => p.id === entry.panel_id);
-    await logActivity(decision, `${panel ? panel.name : "Unknown"} — ${entry.date} — ${analyteName} → ${decision.toUpperCase()}`);
-    loadAll();
-  }
-
-  async function reviewAnalytesBulk(entry, analyteNames, decision, note) {
-    if (role !== "admin" && role !== "super") return;
-    const reviews = { ...(entry.reviews || {}) };
-    const at = new Date().toISOString();
-    analyteNames.forEach((name) => {
-      reviews[name] = { status: decision, note: note || "", by: username, at };
+  async function addReagent(entry) {
+    const dup = reagents.find((r) => !r.deleted && r.name === entry.name && r.lot_number === entry.lotNumber);
+    if (dup && !confirm(`Lot ${entry.lotNumber} already exists for ${entry.name}. Add it again anyway?`)) return;
+    await supabase.from("reagents").insert({
+      name: entry.name,
+      department: entry.department,
+      item_type: entry.itemType,
+      device: entry.device || "",
+      lot_number: entry.lotNumber,
+      unit: entry.unit,
+      quantity_received: entry.quantityReceived,
+      current_quantity: entry.quantityReceived,
+      expiry_date: entry.expiryDate,
+      date_added: entry.receivedDate,
+      added_by: entry.receivedBy,
+      low_stock_threshold: entry.lowStockThreshold,
+      intact_container: entry.intact_container,
+      complete_compound: entry.complete_compound,
+      expiration_validity: entry.expiration_validity,
+      lot_matches_kit: entry.lot_matches_kit,
+      storage_condition_ok: entry.storage_condition_ok,
+      receiving_notes: entry.receivingNotes,
+      inspection_notes: entry.inspectionNotes,
     });
-    await supabase.from("qc_entries").update({ reviews }).eq("id", entry.id);
-    const panel = panels.find((p) => p.id === entry.panel_id);
-    await logActivity(decision, `${panel ? panel.name : "Unknown"} — ${entry.date} — ${analyteNames.join(", ")} → ${decision.toUpperCase()}`);
+    await logActivity("receive", "reagent", `${entry.name} — Lot ${entry.lotNumber}, ${entry.quantityReceived} ${entry.unit}, received by ${entry.receivedBy}`);
+    setShowWizard(false);
     loadAll();
   }
 
-  // One-time cleanup: recompute every saved result's color/flags with the
-  // current (simplified) single-point rule, using whatever baseline is
-  // active right now. Doesn't touch values, reviews, or anything else.
-  async function recalculateAllColors() {
-    if (role !== "admin" && role !== "super") return;
-    if (!confirm("Recalculate colors for every saved result using the current normal ranges? This can take a minute.")) return;
-    setBusy(true);
-    try {
-      const { data: allEntries } = await supabase.from("qc_entries").select("*").eq("deleted", false);
-      const { data: allBaselines } = await supabase.from("qc_baselines").select("*").eq("active", true);
-      for (const e of allEntries || []) {
-        const colors = { ...e.colors };
-        const flags = { ...e.flags };
-        let changed = false;
-        for (const [name, value] of Object.entries(e.values || {})) {
-          const baseline = allBaselines.find((b) => b.panel_id === e.panel_id && b.analyte_name === name && b.lot_number === e.lot_number);
-          if (!baseline) continue;
-          const z = zScore(value, baseline.mean, baseline.sd);
-          const { color, flags: f } = evaluateWestgard(z);
-          if (colors[name] !== color) changed = true;
-          colors[name] = color;
-          flags[name] = f;
-        }
-        if (changed) await supabase.from("qc_entries").update({ colors, flags }).eq("id", e.id);
-      }
-      await logActivity("recalculate", "Recalculated all result colors with current normal ranges");
-      loadAll();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const activeEntries = useMemo(() => (entries || []).filter((e) => !e.deleted), [entries]);
-  const pendingItems = useMemo(() => {
-    const items = [];
-    activeEntries.forEach((e) => {
-      Object.keys(e.values || {}).forEach((analyteName) => {
-        const status = e.reviews?.[analyteName]?.status || "pending";
-        if (status === "pending") items.push({ entry: e, analyteName });
+  async function bulkReceive(rows) {
+    for (const entry of rows) {
+      await supabase.from("reagents").insert({
+        name: entry.name,
+        department: entry.department,
+        item_type: entry.itemType || "Reagent",
+        device: entry.device || "",
+        lot_number: entry.lotNumber,
+        unit: entry.unit || "unit",
+        quantity_received: Number(entry.quantityReceived),
+        current_quantity: Number(entry.quantityReceived),
+        expiry_date: entry.expiryDate,
+        date_added: entry.receivedDate,
+        added_by: entry.receivedBy,
+        low_stock_threshold: Number(entry.lowStockThreshold) || Math.ceil(Number(entry.quantityReceived) * ((config.low_stock_default_percent || 15) / 100)),
+        intact_container: true, complete_compound: true, expiration_validity: true, lot_matches_kit: true, storage_condition_ok: true,
       });
-    });
-    return items;
-  }, [activeEntries]);
+    }
+    await logActivity("bulk_import", "reagent", `Imported ${rows.length} lot(s) from file`);
+    setShowImport(false);
+    loadAll();
+  }
 
-  if (!config || panels === null || entries === null) {
+  async function recordConsumption(entry) {
+    const item = reagents.find((r) => r.id === entry.reagentId);
+    if (!item) return;
+    const newQty = Math.max(0, item.current_quantity - entry.amount);
+    await supabase.from("reagents").update({ current_quantity: newQty }).eq("id", item.id);
+    await supabase.from("consumption_logs").insert({
+      reagent_id: entry.reagentId, amount: entry.amount, date: entry.date, used_by: entry.usedBy, note: entry.note, tested_by_qc: entry.testedByQC,
+    });
+    await logActivity("log_use", "log", `${item.name} — −${entry.amount} ${item.unit} used by ${entry.usedBy}${entry.note ? ` (${entry.note})` : ""}`);
+    setShowLog(false);
+    loadAll();
+  }
+
+  async function saveEditedReagent(updated) {
+    await supabase.from("reagents").update({
+      lot_number: updated.lot_number,
+      quantity_received: updated.quantity_received,
+      current_quantity: updated.current_quantity,
+      expiry_date: updated.expiry_date,
+      low_stock_threshold: updated.low_stock_threshold,
+      edited_by: username,
+      edited_at: new Date().toISOString(),
+    }).eq("id", updated.id);
+    await logActivity("edit", "reagent", `${updated.name || ""} — Lot ${updated.lot_number}`.trim());
+    setEditReagent(null);
+    loadAll();
+  }
+
+  async function deleteReagent(id) {
+    if (!["admin","super","owner"].includes(role)) return;
+    if (!confirm("Remove this lot from the active inventory? It will stay in Reports for audit purposes.")) return;
+    const item = reagents.find((r) => r.id === id);
+    await supabase.from("reagents").update({ deleted: true, deleted_by: username, deleted_at: new Date().toISOString() }).eq("id", id);
+    await logActivity("delete", "reagent", item ? `${item.name} — Lot ${item.lot_number}` : id);
+    loadAll();
+  }
+
+  async function saveEditedLog(updated, original) {
+    const item = reagents.find((r) => r.id === original.reagent_id);
+    if (item) {
+      const delta = updated.amount - original.amount;
+      const newQty = Math.max(0, item.current_quantity - delta);
+      await supabase.from("reagents").update({ current_quantity: newQty }).eq("id", item.id);
+    }
+    await supabase.from("consumption_logs").update({
+      amount: updated.amount, date: updated.date, used_by: updated.used_by, note: updated.note, tested_by_qc: updated.tested_by_qc,
+      edited_by: username, edited_at: new Date().toISOString(),
+    }).eq("id", updated.id);
+    await logActivity("edit", "log", `${item ? item.name : "Unknown"} — ${updated.amount} used by ${updated.used_by} on ${updated.date}`);
+    setEditLog(null);
+    loadAll();
+  }
+
+  async function deleteLog(log) {
+    if (!["admin","super","owner"].includes(role)) return;
+    if (!confirm("Remove this log entry? The amount will be added back to stock, but it stays in Reports for audit purposes.")) return;
+    const item = reagents.find((r) => r.id === log.reagent_id);
+    if (item) await supabase.from("reagents").update({ current_quantity: item.current_quantity + log.amount }).eq("id", item.id);
+    await supabase.from("consumption_logs").update({ deleted: true, deleted_by: username, deleted_at: new Date().toISOString() }).eq("id", log.id);
+    await logActivity("delete", "log", `${item ? item.name : "Unknown"} — ${log.amount} used by ${log.used_by} on ${log.date}`);
+    loadAll();
+  }
+
+  async function purgeReagent(id) {
+    if (role !== "super") return;
+    if (!confirm("Permanently erase this record? This cannot be undone and it will disappear from Reports too.")) return;
+    const item = reagents.find((r) => r.id === id);
+    await supabase.from("reagents").delete().eq("id", id);
+    await logActivity("purge", "reagent", item ? `${item.name} — Lot ${item.lot_number}` : id);
+    loadAll();
+  }
+
+  async function purgeLog(id) {
+    if (role !== "super") return;
+    if (!confirm("Permanently erase this record? This cannot be undone and it will disappear from Reports too.")) return;
+    const log = logs.find((l) => l.id === id);
+    const item = log ? reagents.find((r) => r.id === log.reagent_id) : null;
+    await supabase.from("consumption_logs").delete().eq("id", id);
+    await logActivity("purge", "log", log ? `${item ? item.name : "Unknown"} — ${log.amount} used by ${log.used_by} on ${log.date}` : id);
+    loadAll();
+  }
+
+  async function clearActivityLog() {
+    if (role !== "super") return;
+    if (!confirm("Erase the entire activity history? This cannot be undone.")) return;
+    await supabase.from("audit_log").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    loadAll();
+  }
+
+  const groups = useMemo(() => {
+    if (!reagents) return [];
+    const active = reagents.filter((r) => !r.deleted);
+    const map = {};
+    for (const r of active) {
+      if (!map[r.name]) map[r.name] = [];
+      map[r.name].push(r);
+    }
+    return Object.entries(map).map(([name, items]) => {
+      const sorted = [...items].sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date));
+      const totalQty = items.reduce((s, i) => s + i.current_quantity, 0);
+      const worstStatus = items.some((i) => statusOf(i, config?.expiry_warning_days) === "red") ? "red" : items.some((i) => statusOf(i, config?.expiry_warning_days) === "yellow") ? "yellow" : "green";
+      const flagged = items.some(hasInspectionIssue);
+      return { name, items: sorted, fefo: sorted[0], totalQty, status: worstStatus, department: items[0].department, unit: items[0].unit, flagged };
+    });
+  }, [reagents, config?.expiry_warning_days]);
+
+  const counts = useMemo(() => {
+    const c = { red: 0, yellow: 0, green: 0, flagged: 0 };
+    groups.forEach((g) => { c[g.status]++; if (g.flagged) c.flagged++; });
+    return c;
+  }, [groups]);
+
+  useEffect(() => {
+    if (typeof Notification === "undefined") return;
+    if (!reagents || Notification.permission !== "granted") return;
+    if (counts.red === 0) return;
+    const key = `notified-${todayISO()}`;
+    if (localStorage.getItem(key)) return;
+    new Notification("Reagent Log — Critical items", { body: `${counts.red} reagent(s) expired or out of stock. Open the app to review.` });
+    localStorage.setItem(key, "1");
+  }, [counts, reagents]);
+
+  function enableNotifications() {
+    if (typeof Notification === "undefined") {
+      alert("Browser notifications aren't supported in this browser (common in in-app browsers like WhatsApp's — try opening the link in Chrome or Safari instead).");
+      return;
+    }
+    Notification.requestPermission();
+  }
+
+  if (!config || reagents === null || logs === null) {
     return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "IBM Plex Mono, monospace", color: "#4A5A5C" }}>Loading…</div>;
   }
-  if (!role) return <Login config={config} staffAccounts={staffAccounts} portalAccounts={portalAccounts} onLogin={handleLogin} />;
-
-  if (role === "portal") {
-    return (
-      <Portal
-        config={config} permissions={permissions} allTables={allTables} username={username}
-        panels={panels} entries={activeEntries} baselines={baselines} controlLots={controlLots}
-        busy={busy} pendingItems={pendingItems}
-        onSubmit={submitEntry} onDelete={deleteEntry} onReview={reviewAnalyte} onReviewBulk={reviewAnalytesBulk}
-        onRecalculate={recalculateAllColors} onLogout={logout}
-      />
-    );
-  }
+  if (!role) return <Login config={config} staffAccounts={staffAccounts} onLogin={handleLogin} />;
 
   return (
     <div style={{ minHeight: "100vh", background: "#F0F3F2", fontFamily: "'IBM Plex Sans', sans-serif", color: "#1B2B2E" }}>
@@ -292,164 +306,101 @@ export default function App() {
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
         * { box-sizing: border-box; }
         button { font-family: inherit; cursor: pointer; }
-        input, select, textarea { font-family: inherit; }
-        .app-sidebar { position: fixed; top: 0; left: 0; height: 100vh; width: 240px; transform: translateX(-100%); transition: transform 0.2s; z-index: 50; overflow-y: auto; }
-        .app-sidebar.open { transform: translateX(0); }
-        .app-sidebar-overlay { position: fixed; inset: 0; background: rgba(15,25,26,0.5); z-index: 40; }
-        .app-main { padding: 24px 20px 80px; max-width: 900px; margin: 0 auto; }
-        .app-topbar { display: flex; }
-        @media (min-width: 880px) {
-          .app-sidebar { transform: translateX(0); }
-          .app-sidebar-overlay { display: none !important; }
-          .app-main { margin-left: 240px; max-width: 1000px; }
-          .app-topbar { display: none !important; }
+        input, select { font-family: inherit; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-thumb { background: #C7D1CE; border-radius: 4px; }
+        :root {
+          --header-bg: linear-gradient(135deg, ${config.theme_colors?.headerStart || "#123C4A"} 0%, ${config.theme_colors?.headerEnd || "#1B2B2E"} 100%);
+          --accent-1: ${config.theme_colors?.accent1 || "#0F9B8E"};      /* primary actions: receive, save, add */
+          --accent-1-dark: #0B7A70;
+          --accent-2: ${config.theme_colors?.accent2 || "#3E6ACF"};      /* secondary actions: export, import, nav */
+          --accent-2-bg: #E7EEFB;
+          --accent-3: #D8862B;      /* tertiary highlight: charts, special badges */
+          --accent-3-bg: #FBF0E2;
         }
         @media print {
-          .app-sidebar, .app-topbar, .app-sidebar-overlay, .no-print { display: none !important; }
-          body, html { background: #fff !important; }
-          .app-main { padding: 0 !important; max-width: 100% !important; margin-left: 0 !important; }
-          .print-area { border: none !important; }
-          .print-area table { font-size: 10px !important; }
-          .print-only { display: inline !important; }
+          .no-print { display: none !important; }
+          body { background: #fff !important; }
         }
       `}</style>
 
-      <div className="app-topbar" style={{ background: "#1B2B2E", padding: "14px 16px", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 30 }}>
-        <button onClick={() => setSidebarOpen(true)} style={{ background: "none", border: "none", color: "#F0F3F2" }}><Menu size={22} /></button>
-        <div style={{ color: "#F0F3F2", fontWeight: 700, fontSize: 15 }}>{config.app_title || "QC Log"}</div>
-        <button onClick={logout} style={{ background: "none", border: "none", color: "#8FA39E" }}><LogOut size={18} /></button>
-      </div>
+      <Header tab={tab} setTab={setTab} role={role} onAdd={() => setShowWizard(true)} onImport={() => setShowImport(true)} onLog={() => setShowLog(true)} onLogout={logout} onEnableNotif={enableNotifications} />
 
-      {sidebarOpen && <div className="app-sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
-      <AppSidebar
-        config={config} role={role} username={username} tab={tab}
-        onNavigate={(k) => { setTab(k); setSidebarOpen(false); }}
-        onLogout={logout} pendingCount={pendingItems.length} pinnedTables={pinnedTables}
-        className={sidebarOpen ? "app-sidebar open" : "app-sidebar"}
-      />
+      <main style={{ maxWidth: 980, margin: "0 auto", padding: "24px 20px 80px" }}>
+        {counts.red > 0 && !bannerDismissed && tab !== "settings" && (
+          <div className="no-print" style={{ background: "#FBEAE6", border: "1px solid #C1432B33", borderRadius: 10, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+            <AlertTriangle size={18} color="#C1432B" />
+            <div style={{ flex: 1, fontSize: 13.5, color: "#8A2E1F" }}><b>{counts.red}</b> reagent{counts.red > 1 ? "s" : ""} expired or out of stock — needs attention now.</div>
+            <button onClick={() => setBannerDismissed(true)} style={{ background: "none", border: "none", color: "#8A2E1F" }}><X size={16} /></button>
+          </div>
+        )}
+        {counts.flagged > 0 && tab !== "settings" && (
+          <div className="no-print" style={{ background: "#FBF3DF", border: "1px solid #B8860B33", borderRadius: 10, padding: "12px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
+            <ClipboardX size={18} color="#B8860B" />
+            <div style={{ flex: 1, fontSize: 13.5, color: "#7A5C08" }}><b>{counts.flagged}</b> reagent{counts.flagged > 1 ? "s" : ""} failed an inspection check on receipt — review before use.</div>
+          </div>
+        )}
 
-      <main className="app-main">
-        {tab === "home" && <HomePage username={username} role={role} config={config} panels={panels} activeEntries={activeEntries} pendingCount={pendingItems.length} onNavigate={setTab} />}
-        {tab === "qc" && <Dashboard panels={panels} entries={activeEntries} baselines={baselines} role={role} busy={busy} onSubmit={submitEntry} onDelete={deleteEntry} />}
-        {tab === "staff" && <StaffMembers departments={config.departments || []} role={role} />}
-        {tab === "schedule" && <Schedule departments={config.departments || []} role={role} username={username} />}
-        {tab === "shifts" && (role === "admin" || role === "super") && <ShiftTemplates role={role} />}
-        {tab === "grid" && (role === "admin" || role === "super") && <MonthlyGrid panels={panels} entries={activeEntries} controlLots={controlLots} />}
-        {tab === "controls" && (role === "admin" || role === "super") && <ControlStock panels={panels} entries={activeEntries} controlLots={controlLots} onRecalculate={recalculateAllColors} busy={busy} />}
-        {tab === "riqas" && (role === "admin" || role === "super") && <Riqas departments={config.departments || []} role={role} username={username} />}
-        {tab === "chart" && (role === "admin" || role === "super") && <LeveyJennings panels={panels} entries={activeEntries} baselines={baselines} />}
-        {tab === "export" && (role === "admin" || role === "super") && <ExportPage panels={panels} entries={activeEntries} />}
-        {tab === "approvals" && (role === "admin" || role === "super") && <Approvals items={pendingItems} panels={panels} onReview={reviewAnalyte} onReviewBulk={reviewAnalytesBulk} />}
-        {tab === "settings" && (role === "admin" || role === "super") && <Settings config={config} panels={panels} role={role} staffAccounts={staffAccounts} username={username} baselines={baselines} reload={() => { ensureConfig(); loadAll(); }} />}
-        {tab === "audit" && (role === "admin" || role === "super") && <AuditTrail />}
-        {tab === "kpi" && (role === "admin" || role === "super") && <KPI panels={panels} entries={activeEntries} baselines={baselines} />}
-        {tab === "owner" && role === "super" && <OwnerSettings config={config} reload={() => { ensureConfig(); loadAll(); }} />}
-        {tab === "tables" && (role === "admin" || role === "super") && <CustomTables role={role} username={username} onReload={loadAll} />}
-        {tab === "files" && (role === "admin" || role === "super") && <Files role={role} username={username} />}
-        {tab.startsWith("pinned:") && (() => {
-          const t = pinnedTables.find((x) => `pinned:${x.id}` === tab);
-          return t ? <CustomTables role={role} username={username} openTableId={t.id} onReload={loadAll} /> : null;
-        })()}
-        {error && <div style={{ position: "fixed", bottom: 16, left: "50%", transform: "translateX(-50%)", background: "#C1432B", color: "#fff", padding: "10px 18px", borderRadius: 8, fontSize: 14 }}>{error}</div>}
+        {tab === "dashboard" && <Dashboard groups={groups} counts={counts} departments={config.departments || []} role={role} onDeleteReagent={deleteReagent} onSelect={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
+        {tab === "detail" && selectedGroup && (
+          <DetailView
+            group={groups.find((g) => g.name === selectedGroup.name) || selectedGroup}
+            logs={logs.filter((l) => !l.deleted && (groups.find((g) => g.name === selectedGroup.name)?.items || []).some((i) => i.id === l.reagent_id))}
+            role={role}
+            expiryWarningDays={config?.expiry_warning_days}
+            onBack={() => setTab("dashboard")}
+            onEditReagent={setEditReagent} onDeleteReagent={deleteReagent}
+            onEditLog={setEditLog} onDeleteLog={deleteLog}
+          />
+        )}
+        {tab === "reports" && <Reports reagents={reagents} logs={logs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
+        {tab === "settings" && (["admin","super","owner"].includes(role)) && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
+        {tab === "fridges" && <FridgeInventory username={username} logActivity={logActivity} />}
+        {tab === "charts" && (["admin","super","owner"].includes(role)) && <Charts reagents={reagents} logs={logs} />}
+        {tab === "deletions" && ["super","owner"].includes(role) && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}
       </main>
+
+      {showWizard && <ReceiveWizard presets={presets} devices={devices} role={role} departments={config.departments || []} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
+      {showImport && (
+        <Modal title="Bulk import reagents" onClose={() => setShowImport(false)}>
+          <ReagentImport departments={config.departments || []} onApply={bulkReceive} />
+        </Modal>
+      )}
+      {showLog && <LogConsumptionModal reagents={reagents.filter((r) => !r.deleted)} onClose={() => setShowLog(false)} onSubmit={recordConsumption} />}
+      {editReagent && <EditReagentModal reagent={editReagent} onClose={() => setEditReagent(null)} onSave={saveEditedReagent} />}
+      {editLog && <EditLogModal log={editLog} onClose={() => setEditLog(null)} onSave={saveEditedLog} />}
+      {error && <div style={{ position: "fixed", bottom: 16, left: "50%", transform: "translateX(-50%)", background: "#C1432B", color: "#fff", padding: "10px 18px", borderRadius: 8, fontSize: 14 }}>{error}</div>}
     </div>
   );
 }
 
-const PORTAL_PAGE_META = {
-  qc: { label: "QC Entry", icon: LayoutGrid },
-  grid: { label: "Monthly grid", icon: Grid3x3 },
-  controls: { label: "Controls", icon: PackageCheck },
-  riqas: { label: "RIQAS", icon: Award },
-  files: { label: "Files", icon: FolderOpen },
-  chart: { label: "Chart", icon: BarChart3 },
-  export: { label: "Export", icon: Download },
-  tables: { label: "Tables", icon: Table2 },
-};
-
-function buildPortalPages(permissions, allTables) {
-  const pages = [];
-  (permissions || []).forEach(({ page, level }) => {
-    if (page === "qc") {
-      pages.push({ key: "qc", label: "QC Entry", icon: LayoutGrid, level });
-      if (level === "admin") pages.push({ key: "approvals", label: "Approvals", icon: ClipboardCheck, level: "admin" });
-    } else if (page.startsWith("table:")) {
-      const id = page.slice(6);
-      const t = allTables.find((c) => c.id === id);
-      pages.push({ key: page, label: t ? t.title : "Table", icon: Table2, level, tableId: id });
-    } else if (PORTAL_PAGE_META[page]) {
-      pages.push({ key: page, label: PORTAL_PAGE_META[page].label, icon: PORTAL_PAGE_META[page].icon, level });
-    }
-  });
-  return pages;
-}
-
-function Portal({ config, permissions, allTables, username, panels, entries, baselines, controlLots, busy, pendingItems, onSubmit, onDelete, onReview, onReviewBulk, onRecalculate, onLogout }) {
-  const pages = buildPortalPages(permissions, allTables);
-  const [openKey, setOpenKey] = useState(pages.length === 1 ? pages[0].key : null);
-  const current = pages.find((p) => p.key === openKey);
-
-  function renderPage(p) {
-    const effectiveRole = p.level === "admin" ? "admin" : "staff";
-    if (p.key === "qc") return <Dashboard panels={panels} entries={entries} baselines={baselines} role={effectiveRole} busy={busy} onSubmit={onSubmit} onDelete={onDelete} />;
-    if (p.key === "approvals") return <Approvals items={pendingItems} panels={panels} onReview={onReview} onReviewBulk={onReviewBulk} />;
-    if (p.key === "grid") return <MonthlyGrid panels={panels} entries={entries} controlLots={controlLots} />;
-    if (p.key === "controls") return <ControlStock panels={panels} entries={entries} controlLots={controlLots} onRecalculate={onRecalculate} busy={busy} />;
-    if (p.key === "riqas") return <Riqas departments={config.departments || []} role={effectiveRole} username={username} />;
-    if (p.key === "chart") return <LeveyJennings panels={panels} entries={entries} baselines={baselines} />;
-    if (p.key === "export") return <ExportPage panels={panels} entries={entries} />;
-    if (p.key === "tables") return <CustomTables role={effectiveRole} username={username} />;
-    if (p.key === "files") return <Files role={effectiveRole} username={username} />;
-    if (p.key.startsWith("table:")) return <CustomTables role={effectiveRole} username={username} openTableId={p.tableId} />;
-    return null;
-  }
-
+function Header({ tab, setTab, role, onAdd, onImport, onLog, onLogout, onEnableNotif }) {
   return (
-    <div style={{ minHeight: "100vh", background: "#F0F3F2", fontFamily: "'IBM Plex Sans', sans-serif", color: "#1B2B2E" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
-        * { box-sizing: border-box; }
-        button { font-family: inherit; cursor: pointer; }
-        input, select, textarea { font-family: inherit; }
-      `}</style>
-      <header style={{ borderBottom: "1px solid #D6DEDB", background: "#1B2B2E" }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto", padding: "18px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <FlaskConical size={22} color={config.theme_color || "#5FBFB0"} />
-            <div>
-              <div style={{ color: "#F0F3F2", fontWeight: 700, fontSize: 17 }}>{config.app_title || "QC Log"}</div>
-              <div style={{ color: "#8FA39E", fontSize: 12 }}>{username}</div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {pages.length > 1 && openKey && (
-              <button onClick={() => setOpenKey(null)} style={{ background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "7px 12px", fontSize: 13 }}>Home</button>
-            )}
-            <button onClick={onLogout} title="Log out" style={{ background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "7px 9px" }}><LogOut size={14} /></button>
+    <header className="no-print" style={{ borderBottom: "1px solid #D6DEDB", background: "var(--header-bg)" }}>
+      <div style={{ maxWidth: 980, margin: "0 auto", padding: "18px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Beaker size={22} color="#5FD9C7" />
+          <div>
+            <div style={{ color: "#F0F3F2", fontWeight: 700, fontSize: 17, letterSpacing: 0.2 }}>Reagent Log</div>
+            <div style={{ color: "#8FA39E", fontSize: 12, fontFamily: "'IBM Plex Mono', monospace" }}>Rabia Hospital · Lab Inventory</div>
           </div>
         </div>
-      </header>
-
-      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px 80px" }}>
-        {pages.length === 0 && <div style={{ textAlign: "center", padding: "80px 20px", color: "#8A9694" }}>No pages have been assigned to this account yet. Ask the owner to grant access.</div>}
-        {current ? renderPage(current) : (
-          <div>
-            <div style={{ fontSize: 14, color: "#516361", marginBottom: 16 }}>Hi {username} — pick where you want to work.</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14 }}>
-              {pages.map((p) => {
-                const Icon = p.icon;
-                return (
-                  <button key={p.key} onClick={() => setOpenKey(p.key)} style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 12, padding: "24px 16px", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                    <Icon size={26} color={config.theme_color || "#0F7173"} />
-                    <div style={{ fontWeight: 700, fontSize: 14, textAlign: "center" }}>{p.label}</div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </main>
-    </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <NavBtn active={tab === "dashboard" || tab === "detail"} onClick={() => setTab("dashboard")} icon={<LayoutGrid size={15} />} label="Dashboard" />
+          <NavBtn active={tab === "reports"} onClick={() => setTab("reports")} icon={<FileText size={15} />} label="Reports" />
+          <NavBtn active={tab === "fridges"} onClick={() => setTab("fridges")} icon={<Refrigerator size={15} />} label="Fridges" />
+          {(["admin","super","owner"].includes(role)) && <NavBtn active={tab === "settings"} onClick={() => setTab("settings")} icon={<SlidersHorizontal size={15} />} label="Settings" />}
+          {(["admin","super","owner"].includes(role)) && <NavBtn active={tab === "charts"} onClick={() => setTab("charts")} icon={<BarChart3 size={15} />} label="Charts" />}
+          {["super","owner"].includes(role) && <NavBtn active={tab === "deletions"} onClick={() => setTab("deletions")} icon={<History size={15} />} label="Activity" />}
+          <button onClick={onEnableNotif} title="Enable browser alerts" style={{ background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "7px 9px" }}><Bell size={14} /></button>
+          <div style={{ width: 1, height: 22, background: "#39494A", margin: "0 4px" }} />
+          <button onClick={onLog} style={{ background: "transparent", border: "1px solid #5FD9C7", color: "#5FD9C7", borderRadius: 7, padding: "7px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><TrendingDown size={14} /> Log use</button>
+          <button onClick={onImport} title="Bulk import from Excel or Word" style={{ background: "transparent", border: "1px solid #8AA9E8", color: "#8AA9E8", borderRadius: 7, padding: "7px 9px" }}><Upload size={14} /></button>
+          <button onClick={onAdd} style={{ background: "var(--accent-1)", border: "none", color: "#fff", borderRadius: 7, padding: "7px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Plus size={14} /> Receive stock</button>
+          <button onClick={onLogout} title="Log out" style={{ background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "7px 9px" }}><LogOut size={14} /></button>
+        </div>
+      </div>
+    </header>
   );
 }
 
@@ -457,191 +408,105 @@ function NavBtn({ active, onClick, icon, label }) {
   return <button onClick={onClick} style={{ background: active ? "#2A3B3D" : "transparent", color: active ? "#F0F3F2" : "#8FA39E", border: "none", borderRadius: 7, padding: "7px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>{icon} {label}</button>;
 }
 
-function AppSidebar({ config, role, username, tab, onNavigate, onLogout, pendingCount, pinnedTables, className }) {
-  const isAdmin = role === "admin" || role === "super";
-  const [openGroups, setOpenGroups] = useState({ qc: true, schedule: true, settings: false, tables: true });
-  const toggleGroup = (k) => setOpenGroups((g) => ({ ...g, [k]: !g[k] }));
-
-  const qcItems = [
-    { key: "qc", label: "QC Entry", icon: LayoutGrid, show: true },
-    { key: "kpi", label: "KPI", icon: BarChart3, show: isAdmin },
-    { key: "grid", label: "Monthly grid", icon: Grid3x3, show: isAdmin },
-    { key: "chart", label: "Charts", icon: BarChart3, show: isAdmin },
-    { key: "riqas", label: "RIQAS", icon: Award, show: isAdmin },
-    { key: "approvals", label: `Approvals${pendingCount ? ` (${pendingCount})` : ""}`, icon: ClipboardCheck, show: isAdmin },
-    { key: "controls", label: "Controls", icon: PackageCheck, show: isAdmin },
-    { key: "export", label: "Export", icon: Download, show: isAdmin },
-  ].filter((i) => i.show);
-
-  const scheduleItems = [
-    { key: "schedule", label: "Schedule", icon: Calendar, show: true },
-    { key: "shifts", label: "Shift templates", icon: Calendar, show: isAdmin },
-  ].filter((i) => i.show);
-
-  const settingsItems = [
-    { key: "settings", label: "Settings", icon: SlidersHorizontal, show: isAdmin },
-    { key: "audit", label: "Audit trail", icon: ClipboardCheck, show: isAdmin },
-    { key: "owner", label: "Owner", icon: Award, show: role === "super" },
-  ].filter((i) => i.show);
-
+function StatCard({ status, count, label }) {
+  const m = STATUS_META[status];
   return (
-    <div className={className} style={{ background: "#1B2B2E", display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "18px 16px", borderBottom: "1px solid #2A3B3D" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <FlaskConical size={22} color={config.theme_color || "#5FBFB0"} />
-          <div>
-            <div style={{ color: "#F0F3F2", fontWeight: 700, fontSize: 15 }}>{config.app_title || "QC Log"}</div>
-            <div style={{ color: "#8FA39E", fontSize: 10.5, fontFamily: "'IBM Plex Mono', monospace" }}>{username}</div>
-          </div>
-        </div>
-      </div>
-
-      <SmartSearch onNavigate={onNavigate} />
-
-      <div style={{ flex: 1, overflowY: "auto", padding: "12px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
-        <SideItem icon={<Home size={15} />} label="Dashboard" active={tab === "home"} onClick={() => onNavigate("home")} />
-
-        <SideGroup icon="🧪" label="Quality Control" open={openGroups.qc} onToggle={() => toggleGroup("qc")}>
-          {qcItems.map((i) => <SideItem key={i.key} icon={<i.icon size={14} />} label={i.label} active={tab === i.key} onClick={() => onNavigate(i.key)} indent />)}
-        </SideGroup>
-
-        <SideItem icon={<Users size={15} />} label="Staff" active={tab === "staff"} onClick={() => onNavigate("staff")} />
-
-        <SideGroup icon="📅" label="Schedule" open={openGroups.schedule} onToggle={() => toggleGroup("schedule")}>
-          {scheduleItems.map((i) => <SideItem key={i.key} icon={<i.icon size={14} />} label={i.label} active={tab === i.key} onClick={() => onNavigate(i.key)} indent />)}
-        </SideGroup>
-
-        {isAdmin && (
-          <SideGroup icon="📋" label="Tables" open={openGroups.tables} onToggle={() => toggleGroup("tables")}>
-            <SideItem icon={<Table2 size={14} />} label="All tables" active={tab === "tables"} onClick={() => onNavigate("tables")} indent />
-            {pinnedTables.map((t) => (
-              <SideItem key={t.id} icon={<Table2 size={14} />} label={t.title} active={tab === `pinned:${t.id}`} onClick={() => onNavigate(`pinned:${t.id}`)} indent />
-            ))}
-          </SideGroup>
-        )}
-        {!isAdmin && pinnedTables.map((t) => (
-          <SideItem key={t.id} icon={<Table2 size={15} />} label={t.title} active={tab === `pinned:${t.id}`} onClick={() => onNavigate(`pinned:${t.id}`)} />
-        ))}
-
-        {isAdmin && <SideItem icon={<FolderOpen size={15} />} label="Files" active={tab === "files"} onClick={() => onNavigate("files")} />}
-
-        {settingsItems.length > 0 && (
-          <SideGroup icon="⚙" label="Settings" open={openGroups.settings} onToggle={() => toggleGroup("settings")}>
-            {settingsItems.map((i) => <SideItem key={i.key} icon={<i.icon size={14} />} label={i.label} active={tab === i.key} onClick={() => onNavigate(i.key)} indent />)}
-          </SideGroup>
-        )}
-      </div>
-
-      <div style={{ padding: 12, borderTop: "1px solid #2A3B3D" }}>
-        <button onClick={onLogout} style={{ width: "100%", background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "9px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-          <LogOut size={14} /> Log out
-        </button>
-      </div>
+    <div style={{ background: m.bg, border: `1px solid ${m.color}22`, borderRadius: 10, padding: "16px 18px", flex: 1, minWidth: 140 }}>
+      <div style={{ fontSize: 28, fontWeight: 700, color: m.color, fontFamily: "'IBM Plex Mono', monospace" }}>{count}</div>
+      <div style={{ fontSize: 13, color: "#516361", fontWeight: 500 }}>{label}</div>
     </div>
   );
 }
 
-function SideGroup({ icon, label, open, onToggle, children }) {
+function GaugeBar({ pct, color }) {
   return (
-    <div>
-      <button onClick={onToggle} style={{ width: "100%", background: "transparent", border: "none", color: "#F0F3F2", padding: "8px 10px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, borderRadius: 7 }}>
-        <span>{icon}</span>
-        <span style={{ flex: 1, textAlign: "left" }}>{label}</span>
-        {open ? <ChevronDown size={14} color="#8FA39E" /> : <ChevronRight size={14} color="#8FA39E" />}
-      </button>
-      {open && <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>{children}</div>}
+    <div style={{ width: 44, height: 64, border: "1.5px solid #C7D1CE", borderRadius: 5, position: "relative", overflow: "hidden", background: "#fff", flexShrink: 0 }}>
+      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${Math.min(100, Math.max(3, pct))}%`, background: color, transition: "height .3s" }} />
+      <div style={{ position: "absolute", top: 4, left: 0, right: 0, textAlign: "center", fontSize: 9, color: "#8A9694", fontFamily: "'IBM Plex Mono', monospace" }}>{Math.round(pct)}%</div>
     </div>
   );
 }
 
-function SideItem({ icon, label, active, onClick, indent }) {
-  return (
-    <button onClick={onClick} style={{ width: "100%", background: active ? "#2A3B3D" : "transparent", border: "none", color: active ? "#F0F3F2" : "#8FA39E", padding: "8px 10px", paddingLeft: indent ? 30 : 10, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, borderRadius: 7, textAlign: "left" }}>
-      {icon} {label}
-    </button>
-  );
-}
+function Dashboard({ groups, counts, departments, role, onDeleteReagent, onSelect }) {
+  const [deptFilter, setDeptFilter] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
 
-function reviewSummary(entry) {
-  const names = Object.keys(entry.values || {});
-  let approved = 0, declined = 0, pending = 0;
-  names.forEach((n) => {
-    const st = entry.reviews?.[n]?.status || "pending";
-    if (st === "approved") approved++;
-    else if (st === "declined") declined++;
-    else pending++;
-  });
-  return { approved, declined, pending, total: names.length };
-}
-
-// Who most recently reviewed this entry (any analyte) — for display in grids.
-function lastReviewerLabel(entry) {
-  const reviews = Object.values(entry.reviews || {}).filter((r) => r && r.by && r.status !== "pending");
-  if (reviews.length === 0) return "";
-  reviews.sort((a, b) => new Date(b.at) - new Date(a.at));
-  const s = reviewSummary(entry);
-  return `${reviews[0].by} (${s.approved}/${s.total})`;
-}
-
-function ReviewSummaryBadge({ entry }) {
-  const s = reviewSummary(entry);
-  if (s.total === 0) return null;
-  if (s.declined > 0) return <span style={{ fontSize: 10, fontWeight: 700, color: "#C1432B", background: "#FBEAE6", padding: "3px 8px", borderRadius: 4 }}>{s.declined} declined</span>;
-  if (s.pending > 0) return <span style={{ fontSize: 10, fontWeight: 700, color: "#B8860B", background: "#FBF3DF", padding: "3px 8px", borderRadius: 4 }}>{s.pending} pending review</span>;
-  return <span style={{ fontSize: 10, fontWeight: 700, color: "#2F6B4F", background: "#E8F2EC", padding: "3px 8px", borderRadius: 4 }}>All approved</span>;
-}
-
-function AnalyteReviewBadge({ status }) {
-  const map = { pending: { bg: "#FBF3DF", fg: "#B8860B", label: "Pending" }, approved: { bg: "#E8F2EC", fg: "#2F6B4F", label: "Approved" }, declined: { bg: "#FBEAE6", fg: "#C1432B", label: "Declined" } };
-  const m = map[status] || map.pending;
-  return <span style={{ fontSize: 9.5, fontWeight: 700, color: m.fg, background: m.bg, padding: "2px 6px", borderRadius: 4 }}>{m.label}</span>;
-}
-
-// ---------- Dashboard (today's entry) ----------
-
-function Dashboard({ panels, entries, baselines, role, busy, onSubmit, onDelete }) {
-  const today = todayISO();
-  const [selectedPanelId, setSelectedPanelId] = useState(null);
-  const departments = [...new Set(panels.map((p) => p.department))];
-
-  if (panels.length === 0) {
-    return <div style={{ textAlign: "center", padding: "80px 20px", color: "#7B8E8A" }}>No QC panels set up yet. Ask an admin to add them from Settings.</div>;
-  }
-
-  if (selectedPanelId) {
-    const panel = panels.find((p) => p.id === selectedPanelId);
-    if (!panel) { setSelectedPanelId(null); return null; }
+  if (groups.length === 0) {
     return (
-      <PanelPage
-        panel={panel}
-        entries={entries.filter((e) => e.panel_id === panel.id)}
-        baselines={baselines}
-        role={role} busy={busy} onSubmit={onSubmit} onDelete={onDelete}
-        onBack={() => setSelectedPanelId(null)}
-      />
+      <div style={{ textAlign: "center", padding: "80px 20px", color: "#7B8E8A" }}>
+        <Droplet size={36} style={{ marginBottom: 12, opacity: 0.5 }} />
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6, color: "#1B2B2E" }}>No reagents logged yet</div>
+        <div style={{ fontSize: 14 }}>Use "Receive stock" above to add your first reagent batch.</div>
+      </div>
     );
   }
+  const term = itemFilter.trim().toLowerCase();
+  const filteredGroups = groups
+    .filter((g) => (deptFilter ? g.department === deptFilter : true))
+    .filter((g) => (term ? g.name.toLowerCase().includes(term) || g.fefo.lot_number.toLowerCase().includes(term) || (g.fefo.device || "").toLowerCase().includes(term) : true));
+  const byDept = departments.map((d) => ({ dept: d, items: filteredGroups.filter((g) => g.department === d) })).filter((x) => x.items.length);
 
   return (
     <div>
-      <div style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 20 }}>Pick a device to enter or review its QC — for today or any other day.</div>
-      {departments.map((dept) => (
-        <div key={dept} style={{ marginBottom: 28 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
+        <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} style={{ border: "1px solid #C7D1CE", borderRadius: 8, padding: "10px 12px", fontSize: 14, background: "#fff", minWidth: 160 }}>
+          <option value="">All departments</option>
+          {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <SearchableSelect
+          value={itemFilter}
+          onChange={setItemFilter}
+          options={[...new Set(groups.map((g) => g.name))]}
+          placeholder="Reagent, lot number, or device…"
+          style={{ flex: 1, minWidth: 200 }}
+        />
+      </div>
+      <div style={{ display: "flex", gap: 12, marginBottom: 28, flexWrap: "wrap" }}>
+        <StatCard status="red" count={counts.red} label="Critical — expired or out" />
+        <StatCard status="yellow" count={counts.yellow} label="Watch — expiring or low" />
+        <StatCard status="green" count={counts.green} label="Stable" />
+      </div>
+      {byDept.length === 0 && (
+        <div style={{ textAlign: "center", padding: "40px 20px", color: "#8A9694", fontSize: 13.5 }}>No matches for this filter.</div>
+      )}
+      {byDept.map(({ dept, items }) => (
+        <div key={dept} style={{ marginBottom: 26 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <span style={{ width: 8, height: 8, borderRadius: 2, background: deptColor(dept, departments) }} />
             <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: 0.3 }}>{dept}</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {panels.filter((p) => p.department === dept).map((panel) => {
-              const todaysEntry = entries.find((e) => e.panel_id === panel.id && e.date === today);
+            {items.map((g) => {
+              const m = STATUS_META[g.status];
+              const pct = (g.fefo.current_quantity / g.fefo.quantity_received) * 100;
+              const dExp = daysBetween(g.fefo.expiry_date, todayISO());
               return (
-                <button key={panel.id} onClick={() => setSelectedPanelId(panel.id)} style={{ textAlign: "left", background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 14.5 }}>{panel.name}</div>
-                    <div style={{ fontSize: 11.5, color: "#8A9694" }}>lot {panel.lot_number || "—"} · {(panel.analytes || []).length} analytes</div>
+                <div key={g.name} onClick={() => onSelect(g)} style={{ display: "flex", alignItems: "center", gap: 16, background: "#fff", border: "1px solid #E1E8E5", borderLeft: `4px solid ${m.color}`, borderRadius: 8, padding: "12px 16px", textAlign: "left", cursor: "pointer" }}>
+                  <GaugeBar pct={pct} color={m.color} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 15, display: "flex", alignItems: "center", gap: 6 }}>
+                      {g.name}
+                      {g.flagged && <ClipboardX size={13} color="#B8860B" title="Inspection issue on receipt" />}
+                    </div>
+                    <div style={{ fontSize: 12.5, color: "#7B8E8A", fontFamily: "'IBM Plex Mono', monospace", marginTop: 2 }}>
+                      Lot {g.fefo.lot_number} · {g.fefo.current_quantity} {g.unit} left · {g.items.length > 1 ? `${g.items.length} lots` : "1 lot"}{g.fefo.device ? ` · ${g.fefo.device}` : ""}
+                    </div>
                   </div>
-                  {todaysEntry ? <ReviewSummaryBadge entry={todaysEntry} /> : <span style={{ fontSize: 11.5, color: "#B8860B", fontWeight: 600 }}>Not entered today</span>}
-                </button>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: m.color }}>{m.label}</div>
+                    <div style={{ fontSize: 11.5, color: "#8A9694" }}>{dExp < 0 ? `expired ${Math.abs(dExp)}d ago` : `expires in ${dExp}d`}</div>
+                  </div>
+                  {(["admin","super","owner"].includes(role)) && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDeleteReagent(g.fefo.id); }}
+                      title="Remove this lot"
+                      style={{ background: "none", border: "none", color: "#C1432B", padding: 4 }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                  <ChevronRight size={16} color="#B7C3C0" />
+                </div>
               );
             })}
           </div>
@@ -651,323 +516,305 @@ function Dashboard({ panels, entries, baselines, role, busy, onSubmit, onDelete 
   );
 }
 
-function PanelPage({ panel, entries, baselines, role, busy, onSubmit, onDelete, onBack }) {
-  const [date, setDate] = useState(todayISO());
-  const [editing, setEditing] = useState(false);
-  const [values, setValues] = useState({});
-  const [note, setNote] = useState("");
+function DetailView({ group, logs, role, expiryWarningDays, onBack, onEditReagent, onDeleteReagent, onEditLog, onDeleteLog }) {
+  const last30 = logs.filter((l) => daysBetween(todayISO(), l.date) <= 30);
+  const consumed30 = last30.reduce((s, l) => s + l.amount, 0);
+  const avgDaily = consumed30 / 30;
+  const daysLeft = avgDaily > 0 ? Math.round(group.totalQty / avgDaily) : null;
 
-  const entry = entries.find((e) => e.date === date);
-
-  useEffect(() => {
-    setValues(entry ? entry.values || {} : {});
-    setNote(entry ? entry.note || "" : "");
-    setEditing(false);
-  }, [date, entry?.id]);
-
-  function submit() {
-    onSubmit(panel, date, values, note, entry || null);
-    setEditing(false);
-  }
-
-  // Quick live preview color as you type — a single-point check against the
-  // baseline (mean/SD). The final saved color also runs the full Westgard
-  // multirule check on the server side once you save.
-  function livePreviewColor(analyteName, raw) {
-    if (raw === undefined || raw === "" || raw === null || isNaN(Number(raw))) return null;
-    const baseline = baselines.find((b) => b.panel_id === panel.id && b.analyte_name === analyteName && b.lot_number === panel.lot_number);
-    if (!baseline) return null;
-    const z = zScore(Number(raw), baseline.mean, baseline.sd);
-    if (Math.abs(z) >= 2) return "red";
-    if (Math.abs(z) >= 1.5) return "orange";
-    return "green";
-  }
-
-  const showForm = !entry || editing;
+  const inspectionLabels = {
+    intact_container: "Intact container",
+    complete_compound: "Complete components",
+    expiration_validity: "Expiration validity",
+    lot_matches_kit: "Lot number of kit matches components",
+    storage_condition_ok: "Storage condition",
+  };
 
   return (
     <div>
-      <button onClick={onBack} style={{ background: "none", border: "none", color: "#0F7173", fontSize: 13, fontWeight: 600, marginBottom: 14 }}>← Back to devices</button>
+      <button onClick={onBack} style={{ background: "none", border: "none", color: "#0F7173", fontSize: 13, fontWeight: 600, marginBottom: 18, display: "flex", alignItems: "center", gap: 4 }}>← Back to dashboard</button>
+      <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>{group.name}</h2>
+      <div style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 20, fontFamily: "'IBM Plex Mono', monospace" }}>{group.department} · {group.totalQty} {group.unit} in stock across {group.items.length} lot(s)</div>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
-        <div>
-          <h2 style={{ fontSize: 20, fontWeight: 700 }}>{panel.name}</h2>
-          <div style={{ fontSize: 12, color: "#8A9694" }}>lot {panel.lot_number || "—"} · {panel.department}</div>
+      <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
+        <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: "14px 16px", flex: 1, minWidth: 150 }}>
+          <div style={{ fontSize: 11, color: "#8A9694", fontWeight: 600, textTransform: "uppercase" }}>Avg daily use (30d)</div>
+          <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace" }}>{avgDaily.toFixed(1)} <span style={{ fontSize: 13, fontWeight: 500 }}>{group.unit}/day</span></div>
         </div>
-        <label style={{ fontSize: 12.5, fontWeight: 600, color: "#516361" }}>Date
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...inputStyle, marginTop: 2 }} />
-        </label>
+        <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: "14px 16px", flex: 1, minWidth: 150 }}>
+          <div style={{ fontSize: 11, color: "#8A9694", fontWeight: 600, textTransform: "uppercase" }}>Projected runout</div>
+          <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace" }}>{daysLeft !== null ? `${daysLeft}d` : "—"}</div>
+        </div>
+        <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: "14px 16px", flex: 1, minWidth: 150 }}>
+          <div style={{ fontSize: 11, color: "#8A9694", fontWeight: 600, textTransform: "uppercase" }}>Consumed this month</div>
+          <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace" }}>{consumed30} <span style={{ fontSize: 13, fontWeight: 500 }}>{group.unit}</span></div>
+        </div>
       </div>
 
-      {entry && !editing && (
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <ReviewSummaryBadge entry={entry} />
-            <span style={{ fontSize: 11.5, color: "#8A9694" }}>entered by {entry.done_by}{entry.edited_by ? ` · last edited by ${entry.edited_by}` : ""}</span>
-          </div>
-        </div>
-      )}
-
-      <div style={{ overflowX: "auto", background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10 }}>
-        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
-          <thead>
-            <tr style={{ background: "#F0F3F2" }}>
-              <th style={{ padding: "8px 12px", textAlign: "left" }}>Item</th>
-              <th style={{ padding: "8px 12px", textAlign: "left" }}>Normal Range</th>
-              <th style={{ padding: "8px 12px", textAlign: "left" }}>Result</th>
-              {!showForm && <th style={{ padding: "8px 12px", textAlign: "left" }}>Review</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {(panel.analytes || []).map((a) => {
-              const val = entry?.values?.[a.name];
-              const color = entry?.colors?.[a.name];
-              const m = color ? COLOR_META[color] : null;
-              const rev = entry?.reviews?.[a.name];
-              const baseline = baselines.find((b) => b.panel_id === panel.id && b.analyte_name === a.name && b.lot_number === panel.lot_number);
-              return (
-                <tr key={a.name} style={{ borderTop: "1px solid #EEF2F0" }}>
-                  <td style={{ padding: "7px 12px", fontWeight: 600 }}>{a.name}{a.unit ? <span style={{ color: "#8A9694", fontWeight: 400 }}> ({a.unit})</span> : ""}</td>
-                  <td style={{ padding: "7px 12px", fontSize: 12, color: "#516361" }}>
-                    {baseline ? `${(baseline.mean - 2 * baseline.sd).toFixed(2)} – ${(baseline.mean + 2 * baseline.sd).toFixed(2)}` : <span style={{ color: "#B8860B" }}>establishing…</span>}
-                  </td>
-                  <td style={{ padding: "7px 12px" }}>
-                    {showForm ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <input
-                          type="number"
-                          value={values[a.name] ?? ""}
-                          onChange={(e) => setValues((v) => ({ ...v, [a.name]: e.target.value }))}
-                          style={{
-                            ...inputStyle, padding: "6px 8px", fontSize: 13, width: 120,
-                            borderColor: livePreviewColor(a.name, values[a.name]) ? COLOR_META[livePreviewColor(a.name, values[a.name])].fg : "#C7D1CE",
-                            background: livePreviewColor(a.name, values[a.name]) ? COLOR_META[livePreviewColor(a.name, values[a.name])].bg : "#fff",
-                            borderWidth: 2,
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      val === undefined ? "—" : (
-                        <div>
-                          {m ? <span style={{ fontSize: 13, fontWeight: 700, color: m.fg, background: m.bg, padding: "3px 10px", borderRadius: 5 }}>{val}</span> : val}
-                          {(color === "orange" || color === "red") && (entry.flags?.[a.name] || []).length > 0 && (
-                            <div style={{ fontSize: 10, color: "#8A2E1F", marginTop: 3 }}>{(entry.flags[a.name] || []).map((f) => RULE_DESCRIPTIONS[f] || f).join(" · ")}</div>
-                          )}
-                        </div>
-                      )
-                    )}
-                  </td>
-                  {!showForm && (
-                    <td style={{ padding: "7px 12px" }}>
-                      {val === undefined ? "" : (
-                        <>
-                          <AnalyteReviewBadge status={rev?.status || "pending"} />
-                          {rev?.status === "declined" && rev?.note && <div style={{ fontSize: 10.5, color: "#8A2E1F", marginTop: 2 }}>{rev.note}</div>}
-                          {rev?.by && <div style={{ fontSize: 10, color: "#8A9694", marginTop: 2 }}>by {rev.by}</div>}
-                        </>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3 }}>LOTS — use earliest expiry first (FEFO)</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 26 }}>
+        {group.items.map((it, idx) => {
+          const dExp = daysBetween(it.expiry_date, todayISO());
+          const m = STATUS_META[statusOf(it, expiryWarningDays)];
+          const failedItems = INSPECTION_KEYS.filter((k) => it[k] === false).map((k) => inspectionLabels[k]);
+          return (
+            <div key={it.id} style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, padding: "10px 14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {idx === 0 && <span style={{ background: "#0F7173", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 7px", borderRadius: 4 }}>USE FIRST</span>}
+                <div style={{ flex: 1, fontFamily: "'IBM Plex Mono', monospace", fontSize: 13 }}>Lot {it.lot_number}</div>
+                <div style={{ fontSize: 13 }}>{it.current_quantity}/{it.quantity_received} {it.unit}</div>
+                <div style={{ fontSize: 12.5, color: m.color, fontWeight: 600 }}>{dExp < 0 ? `expired ${Math.abs(dExp)}d ago` : `${dExp}d left`}</div>
+                <button onClick={() => onEditReagent(it)} style={{ background: "none", border: "none", color: "#8A9694" }}><Pencil size={14} /></button>
+                {(["admin","super","owner"].includes(role)) && <button onClick={() => onDeleteReagent(it.id)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={14} /></button>}
+              </div>
+              {failedItems.length > 0 && (
+                <div style={{ marginTop: 8, background: "#FBF3DF", border: "1px solid #B8860B33", borderRadius: 6, padding: "6px 10px", fontSize: 11.5, color: "#7A5C08" }}>
+                  ⚠ Inspection issue: {failedItems.join(", ")}
+                </div>
+              )}
+              {(it.receiving_notes || it.inspection_notes) && (
+                <div style={{ marginTop: 8, fontSize: 11.5, color: "#516361" }}>
+                  {it.receiving_notes && <div><b>Note:</b> {it.receiving_notes}</div>}
+                  {it.inspection_notes && <div><b>Inspection note:</b> {it.inspection_notes}</div>}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {showForm ? (
-        <div style={{ marginTop: 12 }}>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" style={{ ...inputStyle, marginBottom: 10 }} />
-          <div style={{ display: "flex", gap: 8 }}>
-            <button disabled={busy} onClick={submit} style={{ background: "#0F7173", color: "#fff", border: "none", borderRadius: 7, padding: "9px 16px", fontSize: 13, fontWeight: 700, opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : entry ? "Resubmit for review" : "Save entry"}</button>
-            {entry && <button onClick={() => setEditing(false)} style={{ background: "none", border: "none", color: "#8A9694" }}>Cancel</button>}
+      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3 }}>CONSUMPTION HISTORY</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {logs.length === 0 && <div style={{ fontSize: 13, color: "#8A9694" }}>No usage logged yet.</div>}
+        {[...logs].sort((a, b) => new Date(b.date) - new Date(a.date)).map((l) => (
+          <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13, padding: "8px 0", borderBottom: "1px solid #EEF2F0" }}>
+            <div style={{ width: 90, color: "#8A9694", fontFamily: "'IBM Plex Mono', monospace" }}>{l.date}</div>
+            <div style={{ flex: 1 }}>−{l.amount} {group.unit}</div>
+            <div style={{ color: "#7B8E8A", display: "flex", alignItems: "center", gap: 4 }}><Users size={12} /> {l.used_by}</div>
+            <div style={{ fontSize: 11, color: l.tested_by_qc ? "#2F6B4F" : "#8A9694", fontWeight: 600 }}>{l.tested_by_qc ? "QC ✓" : "QC —"}</div>
+            <button onClick={() => onEditLog(l)} style={{ background: "none", border: "none", color: "#8A9694" }}><Pencil size={13} /></button>
+            {(["admin","super","owner"].includes(role)) && <button onClick={() => onDeleteLog(l)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={13} /></button>}
           </div>
-        </div>
-      ) : (
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <button onClick={() => setEditing(true)} style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 6, padding: "6px 12px", fontSize: 12 }}>
-            {reviewSummary(entry).declined > 0 ? "Edit & resubmit" : "Edit this entry"}
-          </button>
-          {(role === "admin" || role === "super") && (
-            <button onClick={() => onDelete(entry)} style={{ background: "none", border: "1px solid #C1432B", color: "#C1432B", borderRadius: 6, padding: "6px 12px", fontSize: 12 }}><Trash2 size={12} /></button>
-          )}
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 }
 
-// ---------- Monthly grid (matches the paper form) ----------
+const INSPECTION_REPORT_LABELS = {
+  intact_container: "Intact container",
+  complete_compound: "Complete components",
+  expiration_validity: "Expiration validity",
+  lot_matches_kit: "Lot matches kit components",
+  storage_condition_ok: "Storage condition",
+};
 
-function MonthlyGrid({ panels, entries, controlLots }) {
-  const [search, setSearch] = useState("");
-  const filteredPanels = panels.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
-  const [panelId, setPanelId] = useState(panels[0]?.id || "");
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-  const panel = panels.find((p) => p.id === panelId);
+function firstOfMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
 
-  if (panels.length === 0) return <div style={{ textAlign: "center", padding: "60px 20px", color: "#8A9694" }}>No QC panels set up yet.</div>;
+function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog }) {
+  const [dateFrom, setDateFrom] = useState(firstOfMonth());
+  const [dateTo, setDateTo] = useState(todayISO());
+  const [searchLot, setSearchLot] = useState("");
+  const [deptFilter, setDeptFilter] = useState("");
 
-  const days = panel ? daysInMonth(month) : 0;
-  const dayList = Array.from({ length: days }, (_, i) => i + 1);
-  const [year, mo] = month.split("-");
+  const matchedLots = useMemo(() => {
+    const term = searchLot.trim().toLowerCase();
+    return reagents
+      .filter((r) => (term ? r.lot_number.toLowerCase().includes(term) : r.date_added >= dateFrom && r.date_added <= dateTo))
+      .filter((r) => (deptFilter ? r.department === deptFilter : true))
+      .sort((a, b) => new Date(b.date_added) - new Date(a.date_added));
+  }, [reagents, searchLot, dateFrom, dateTo, deptFilter]);
 
-  function entryFor(day) {
-    const dateStr = `${year}-${mo}-${String(day).padStart(2, "0")}`;
-    return entries.find((e) => e.panel_id === panelId && e.date === dateStr);
+  function logsFor(reagentId) {
+    return logs.filter((l) => l.reagent_id === reagentId).sort((a, b) => new Date(b.date) - new Date(a.date));
   }
 
   async function exportExcel() {
     const XLSX = await import("xlsx");
-    // Build as an array-of-arrays so column order is guaranteed — plain
-    // objects with numeric-looking keys (the day numbers) get silently
-    // reordered by JS before "Item", which is what was hiding it.
-    const header = ["Item", ...dayList];
-    const aoa = [header];
-    (panel.analytes || []).forEach((a) => {
-      aoa.push([a.name, ...dayList.map((day) => entryFor(day)?.values?.[a.name] ?? "")]);
+    const rows = [];
+    matchedLots.forEach((r) => {
+      const rLogs = logsFor(r.id);
+      const base = {
+        Reagent: r.name,
+        Department: r.department,
+        Type: r.item_type,
+        "Lot Number": r.lot_number,
+        "Received By": r.added_by,
+        "Received Date": r.date_added,
+        "Expiry Date": r.expiry_date,
+        "Qty Received": r.quantity_received,
+        "Qty Remaining": r.current_quantity,
+        Unit: r.unit,
+        "Intact Container": r.intact_container ? "Yes" : "No",
+        "Complete Components": r.complete_compound ? "Yes" : "No",
+        "Expiration Validity": r.expiration_validity ? "Yes" : "No",
+        "Lot Matches Kit": r.lot_matches_kit ? "Yes" : "No",
+        "Storage Condition": r.storage_condition_ok ? "Yes" : "No",
+        "Receiving Note": r.receiving_notes || "",
+        "Inspection Note": r.inspection_notes || "",
+        "Lot Deleted": r.deleted ? "Yes" : "No",
+      };
+      if (rLogs.length === 0) {
+        rows.push({ ...base, "Consumption Date": "", "Amount Used": "", "Used By": "", "Tested by QC": "", "Log Deleted": "" });
+      } else {
+        rLogs.forEach((l) => {
+          rows.push({ ...base, "Consumption Date": l.date, "Amount Used": l.amount, "Used By": l.used_by, "Tested by QC": l.tested_by_qc ? "Yes" : "No", "Log Deleted": l.deleted ? "Yes" : "No" });
+        });
+      }
     });
-    aoa.push(["Done by", ...dayList.map((day) => entryFor(day)?.done_by || "")]);
-    aoa.push(["Reviewed by", ...dayList.map((day) => { const e = entryFor(day); return e ? lastReviewerLabel(e) : ""; })]);
-    const sheet = XLSX.utils.aoa_to_sheet(aoa);
+    const sheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Note: "No records match this filter." }]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, sheet, month);
-    XLSX.writeFile(wb, `${panel.name.replace(/[^a-z0-9]/gi, "_")}-${month}.xlsx`);
-  }
-
-  function exportPDF() {
-    window.print();
+    XLSX.utils.book_append_sheet(wb, sheet, "Report");
+    XLSX.writeFile(wb, `reagent-report-${dateFrom}-to-${dateTo}.xlsx`);
   }
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }} className="no-print">
-        <h2 style={{ fontSize: 20, fontWeight: 700 }}>Monthly grid</h2>
-        {panel && (
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={exportPDF} style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><FileText size={14} /> Save as PDF</button>
-            <button onClick={exportExcel} style={{ background: "#0F7173", color: "#fff", border: "none", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Download size={14} /> Export Excel</button>
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }} className="no-print">
-        <input placeholder="Search device…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inputStyle, width: 160 }} />
-        <select value={panelId} onChange={(e) => setPanelId(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
-          {filteredPanels.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ ...inputStyle, width: "auto" }} />
-      </div>
-
-      {panel && (
-        <div className="print-area">
-          <div style={{ background: "#1B2B2E", color: "#F0F3F2", borderRadius: "8px 8px 0 0", padding: "10px 14px", fontSize: 13, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-            <div><b>{panel.name}</b></div>
-            <div>Lot No: {panel.lot_number || "—"}</div>
-            <div>{new Date(month + "-01").toLocaleString("en-US", { month: "long", year: "numeric" })}</div>
-          </div>
-          <div style={{ overflowX: "auto", border: "1px solid #E1E8E5", borderTop: "none", borderRadius: "0 0 8px 8px", background: "#fff" }}>
-            <table style={{ borderCollapse: "collapse", fontSize: 11.5, width: "100%" }}>
-              <thead>
-                <tr>
-                  <th style={{ position: "sticky", left: 0, background: "#F0F3F2", padding: "6px 10px", textAlign: "left", borderBottom: "1px solid #E1E8E5", minWidth: 90 }}>Item</th>
-                  {dayList.map((d) => {
-                    const dateStr = `${year}-${mo}-${String(d).padStart(2, "0")}`;
-                    const newLot = (controlLots || []).find((c) => c.panel_id === panelId && c.received_date === dateStr);
-                    return (
-                      <th key={d} style={{ padding: "6px 8px", borderBottom: "1px solid #E1E8E5", minWidth: 40 }}>
-                        {d}
-                        {newLot && <div title={`New lot: ${newLot.lot_number}`} style={{ fontSize: 8, fontWeight: 700, color: "#0F7173", background: "#EAF6F4", borderRadius: 3, padding: "1px 3px", marginTop: 2 }}>NEW LOT</div>}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {(panel.analytes || []).map((a) => (
-                  <tr key={a.name}>
-                    <td style={{ position: "sticky", left: 0, background: "#fff", padding: "5px 10px", fontWeight: 600, borderBottom: "1px solid #EEF2F0" }}>{a.name}</td>
-                    {dayList.map((day) => {
-                      const e = entryFor(day);
-                      const val = e?.values?.[a.name];
-                      const color = e?.colors?.[a.name];
-                      const m = color ? COLOR_META[color] : null;
-                      return (
-                        <td key={day} title={e?.flags?.[a.name]?.map((f) => RULE_DESCRIPTIONS[f]).join("; ") || ""} style={{ textAlign: "center", padding: "5px 4px", borderBottom: "1px solid #EEF2F0", background: m ? m.bg : "transparent", color: m ? m.fg : "#1B2B2E", fontWeight: m ? 700 : 400 }}>
-                          {val ?? ""}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-                <tr>
-                  <td style={{ position: "sticky", left: 0, background: "#F7F9F8", padding: "5px 10px", fontWeight: 700, borderTop: "2px solid #C7D1CE" }}>Done by</td>
-                  {dayList.map((day) => <td key={day} style={{ textAlign: "center", padding: "5px 4px", borderTop: "2px solid #C7D1CE", fontSize: 10 }}>{entryFor(day)?.done_by || ""}</td>)}
-                </tr>
-                <tr>
-                  <td style={{ position: "sticky", left: 0, background: "#F7F9F8", padding: "5px 10px", fontWeight: 700 }}>Reviewed by</td>
-                  {dayList.map((day) => {
-                    const e = entryFor(day);
-                    return <td key={day} style={{ textAlign: "center", padding: "5px 4px", fontSize: 10 }}>{e ? lastReviewerLabel(e) : ""}</td>;
-                  })}
-                </tr>
-              </tbody>
-            </table>
-          </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700 }}>Full report</h2>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => window.print()} className="no-print" style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Printer size={14} /> Print</button>
+          <button onClick={exportExcel} className="no-print" style={{ background: "#0F7173", color: "#fff", border: "none", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Download size={14} /> Export Excel</button>
         </div>
+      </div>
+
+      <div className="no-print" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20, alignItems: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "#7B8E8A" }}>From</span>
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={{ border: "1px solid #C7D1CE", borderRadius: 6, padding: "7px 10px", fontSize: 13 }} />
+          <span style={{ fontSize: 12, color: "#7B8E8A" }}>To</span>
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={{ border: "1px solid #C7D1CE", borderRadius: 6, padding: "7px 10px", fontSize: 13 }} />
+        </div>
+        <input
+          placeholder="Search by lot number…"
+          value={searchLot}
+          onChange={(e) => setSearchLot(e.target.value)}
+          style={{ border: "1px solid #C7D1CE", borderRadius: 6, padding: "7px 10px", fontSize: 13, flex: 1, minWidth: 180 }}
+        />
+        <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} style={{ border: "1px solid #C7D1CE", borderRadius: 6, padding: "7px 10px", fontSize: 13 }}>
+          <option value="">All departments</option>
+          {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+      </div>
+      {searchLot.trim() && <div style={{ fontSize: 12, color: "#8A9694", marginBottom: 10 }}>Searching by lot number — date filter is ignored while searching.</div>}
+
+      {matchedLots.length === 0 && (
+        <div style={{ textAlign: "center", padding: "60px 20px", color: "#8A9694", fontSize: 13.5 }}>No records match this filter.</div>
       )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {matchedLots.map((r) => {
+          const rLogs = logsFor(r.id);
+          const failedItems = Object.keys(INSPECTION_REPORT_LABELS).filter((k) => r[k] === false);
+          return (
+            <div key={r.id} style={{ background: "#fff", border: r.deleted ? "1px solid #C1432B55" : "1px solid #E1E8E5", borderRadius: 10, padding: 16, opacity: r.deleted ? 0.75 : 1 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
+                <div style={{ fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}>
+                  {r.name}
+                  {r.deleted && <span style={{ fontSize: 10, fontWeight: 700, color: "#C1432B", background: "#FBEAE6", padding: "2px 7px", borderRadius: 4 }}>DELETED by {r.deleted_by} · {fmtDateTime(r.deleted_at)}</span>}
+                  {r.deleted && ["super","owner"].includes(role) && (
+                    <button onClick={() => onPurgeReagent(r.id)} style={{ background: "none", border: "1px solid #C1432B", color: "#C1432B", borderRadius: 6, padding: "3px 9px", fontSize: 10.5, fontWeight: 700 }}>Erase permanently</button>
+                  )}
+                </div>
+                <div style={{ fontSize: 11.5, color: "#7B8E8A", fontFamily: "'IBM Plex Mono', monospace" }}>{r.department} · {r.item_type} · Lot {r.lot_number}</div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 12, fontSize: 12.5 }}>
+                <div><div style={{ color: "#8A9694", fontSize: 10.5, textTransform: "uppercase" }}>Received by</div>{r.added_by}</div>
+                <div><div style={{ color: "#8A9694", fontSize: 10.5, textTransform: "uppercase" }}>Received date</div>{r.date_added}</div>
+                <div><div style={{ color: "#8A9694", fontSize: 10.5, textTransform: "uppercase" }}>Expiry date</div>{r.expiry_date}</div>
+                <div><div style={{ color: "#8A9694", fontSize: 10.5, textTransform: "uppercase" }}>Quantity</div>{r.current_quantity}/{r.quantity_received} {r.unit}</div>
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                {Object.entries(INSPECTION_REPORT_LABELS).map(([key, label]) => (
+                  <span key={key} style={{ fontSize: 11, padding: "3px 8px", borderRadius: 5, background: r[key] ? "#E8F2EC" : "#FBEAE6", color: r[key] ? "#2F6B4F" : "#C1432B", fontWeight: 600 }}>
+                    {r[key] ? "✓" : "✕"} {label}
+                  </span>
+                ))}
+              </div>
+              {failedItems.length > 0 && (
+                <div style={{ fontSize: 11.5, color: "#8A2E1F", marginBottom: 10 }}>⚠ Inspection issue on receipt</div>
+              )}
+              {(r.receiving_notes || r.inspection_notes) && (
+                <div style={{ fontSize: 12, color: "#516361", marginBottom: 12, background: "#F7F9F8", border: "1px solid #E1E8E5", borderRadius: 6, padding: "8px 10px" }}>
+                  {r.receiving_notes && <div><b>Receiving note:</b> {r.receiving_notes}</div>}
+                  {r.inspection_notes && <div><b>Inspection note:</b> {r.inspection_notes}</div>}
+                </div>
+              )}
+
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#7B8E8A", marginBottom: 6, letterSpacing: 0.3 }}>USAGE LOG</div>
+              {rLogs.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: "#8A9694" }}>No usage recorded yet.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {rLogs.map((l) => (
+                    <div key={l.id} style={{ display: "flex", gap: 12, fontSize: 12.5, padding: "6px 0", borderTop: "1px solid #EEF2F0", opacity: l.deleted ? 0.6 : 1 }}>
+                      <div style={{ width: 88, color: "#8A9694", fontFamily: "'IBM Plex Mono', monospace" }}>{l.date}</div>
+                      <div style={{ flex: 1 }}>−{l.amount} {r.unit} by <b>{l.used_by}</b> {l.deleted && <span style={{ color: "#C1432B", fontWeight: 700 }}>(deleted by {l.deleted_by} · {fmtDateTime(l.deleted_at)})</span>}</div>
+                      {l.deleted && ["super","owner"].includes(role) && (
+                        <button onClick={() => onPurgeLog(l.id)} style={{ background: "none", border: "1px solid #C1432B", color: "#C1432B", borderRadius: 6, padding: "2px 8px", fontSize: 10.5, fontWeight: 700 }}>Erase</button>
+                      )}
+                      <div style={{ color: l.tested_by_qc ? "#2F6B4F" : "#8A9694", fontWeight: 600 }}>{l.tested_by_qc ? "QC ✓" : "QC —"}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-// ---------- Approvals ----------
-
-function ControlStock({ panels, entries, controlLots, onRecalculate, busy }) {
-  const today = todayISO();
-
-  function expiryStatus(dateStr) {
-    if (!dateStr) return { label: "no expiry set", color: "#8A9694", bg: "#F0F3F2" };
-    const days = Math.round((new Date(dateStr) - new Date(today)) / 86400000);
-    if (days < 0) return { label: `expired ${Math.abs(days)}d ago`, color: "#C1432B", bg: "#FBEAE6" };
-    if (days <= 14) return { label: `expires in ${days}d`, color: "#B8860B", bg: "#FBF3DF" };
-    return { label: `expires in ${days}d`, color: "#2F6B4F", bg: "#E8F2EC" };
-  }
-
-  if (panels.length === 0) return <div style={{ textAlign: "center", padding: "60px 20px", color: "#8A9694" }}>No QC panels set up yet.</div>;
+function DeletionsLog({ activityLog, onClear }) {
+  const ACTION_META = {
+    receive: { label: "Received", color: "#2F6B4F", bg: "#E8F2EC" },
+    log_use: { label: "Logged use", color: "#0F7173", bg: "#EAF6F4" },
+    edit: { label: "Edited", color: "#B8860B", bg: "#FBF3DF" },
+    delete: { label: "Removed", color: "#C1432B", bg: "#FBEAE6" },
+    purge: { label: "Erased permanently", color: "#8A2E1F", bg: "#FBEAE6" },
+    bulk_import: { label: "Bulk imported", color: "#2F6B4F", bg: "#E8F2EC" },
+    settings_change: { label: "Settings changed", color: "#516361", bg: "#F0F3F2" },
+    preset_add: { label: "Preset added", color: "#516361", bg: "#F0F3F2" },
+    preset_delete: { label: "Preset removed", color: "#516361", bg: "#F0F3F2" },
+    device_add: { label: "Device added", color: "#516361", bg: "#F0F3F2" },
+    device_delete: { label: "Device removed", color: "#516361", bg: "#F0F3F2" },
+    staff_add: { label: "Employee account added", color: "#516361", bg: "#F0F3F2" },
+    staff_role_change: { label: "Employee role changed", color: "#3E6ACF", bg: "#E7EEFB" },
+    staff_remove: { label: "Employee account removed", color: "#516361", bg: "#F0F3F2" },
+    department_add: { label: "Department added", color: "#516361", bg: "#F0F3F2" },
+    department_remove: { label: "Department removed", color: "#516361", bg: "#F0F3F2" },
+    fridge_count: { label: "Fridge count logged", color: "#3E6ACF", bg: "#E7EEFB" },
+    fridge_count_delete: { label: "Fridge count removed", color: "#C1432B", bg: "#FBEAE6" },
+  };
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 4 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700 }}>Control stock</h2>
-        <button disabled={busy} onClick={onRecalculate} style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 7, padding: "7px 12px", fontSize: 12.5, fontWeight: 600, opacity: busy ? 0.6 : 1 }}>
-          {busy ? "Recalculating…" : "Recalculate all colors"}
-        </button>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 10 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700 }}>Activity log</h2>
+        {activityLog.length > 0 && (
+          <button onClick={onClear} style={{ background: "none", border: "1px solid #C1432B", color: "#C1432B", borderRadius: 7, padding: "7px 12px", fontSize: 12.5, fontWeight: 700 }}>
+            Clear all activity
+          </button>
+        )}
       </div>
-      <div style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 20 }}>Current control lot, its expiry, and whether today's QC has been entered yet — for every device.</div>
-      <div style={{ fontSize: 11.5, color: "#8A9694", marginBottom: 20 }}>Changed how colors are calculated? "Recalculate all colors" re-checks every saved result against the current normal ranges — use it once after any range change.</div>
+      <div style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 24 }}>Every edit, removal, and permanent erase — in order, newest first. Only visible to your account.</div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {panels.map((p) => {
-          const lots = controlLots.filter((c) => c.panel_id === p.id).sort((a, b) => new Date(b.received_date) - new Date(a.received_date));
-          const current = lots.find((c) => c.lot_number === p.lot_number) || lots[0];
-          const status = expiryStatus(current?.expiry_date);
-          const todaysEntry = entries.find((e) => e.panel_id === p.id && e.date === today);
-
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {activityLog.length === 0 && <div style={{ fontSize: 13, color: "#8A9694" }}>No activity recorded yet.</div>}
+        {activityLog.map((e) => {
+          const m = ACTION_META[e.action] || { label: e.action, color: "#516361", bg: "#F0F3F2" };
           return (
-            <div key={p.id} style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: "14px 16px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 14.5 }}>{p.name}</div>
-                  <div style={{ fontSize: 11.5, color: "#8A9694" }}>{p.device || "no device set"} · {p.department}</div>
-                </div>
-                {!todaysEntry && (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#C1432B", background: "#FBEAE6", padding: "4px 10px", borderRadius: 5 }}>⚠ Today's QC not entered yet</span>
-                )}
-              </div>
-              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12.5 }}>
-                <div><span style={{ color: "#8A9694" }}>Current lot: </span><b>{p.lot_number || "—"}</b></div>
-                <div><span style={{ color: "#8A9694" }}>Received: </span>{current?.received_date || "—"} {current?.received_by ? `by ${current.received_by}` : ""}</div>
-                <span style={{ fontWeight: 700, color: status.color, background: status.bg, padding: "3px 9px", borderRadius: 5 }}>{status.label}</span>
+            <div key={e.id} style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: m.color, background: m.bg, padding: "3px 8px", borderRadius: 4, textTransform: "uppercase", flexShrink: 0 }}>{m.label}</span>
+              <div style={{ flex: 1, fontSize: 13 }}>
+                <div style={{ fontWeight: 600 }}>{e.description}</div>
+                <div style={{ fontSize: 11.5, color: "#8A9694", marginTop: 2 }}>{ENTITY_LABELS[e.entity] || e.entity} · by <b>{e.performed_by}</b> on {fmtDateTime(e.performed_at)}</div>
               </div>
             </div>
           );
@@ -977,158 +824,132 @@ function ControlStock({ panels, entries, controlLots, onRecalculate, busy }) {
   );
 }
 
-function ExportPage({ panels, entries }) {
-  const [dateFrom, setDateFrom] = useState(firstOfMonth());
-  const [dateTo, setDateTo] = useState(todayISO());
-  const [selectedIds, setSelectedIds] = useState(panels.map((p) => p.id));
-
-  function toggle(id) {
-    setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
-  }
-
-  async function doExport() {
-    const XLSX = await import("xlsx");
-    const wb = XLSX.utils.book_new();
-    const chosen = panels.filter((p) => selectedIds.includes(p.id));
-    if (chosen.length === 0) return;
-
-    chosen.forEach((panel) => {
-      const panelEntries = entries.filter((e) => e.panel_id === panel.id && e.date >= dateFrom && e.date <= dateTo).sort((a, b) => a.date.localeCompare(b.date));
-      const rows = (panel.analytes || []).map((a) => {
-        const row = { Item: a.name };
-        panelEntries.forEach((e) => { row[e.date] = e.values?.[a.name] ?? ""; });
-        return row;
-      });
-      const doneRow = { Item: "Done by" };
-      const reviewRow = { Item: "Reviewed by" };
-      panelEntries.forEach((e) => {
-        doneRow[e.date] = e.done_by;
-        reviewRow[e.date] = lastReviewerLabel(e);
-      });
-      rows.push(doneRow, reviewRow);
-      const sheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Item: "No data in this range" }]);
-      let sheetName = panel.name.replace(/[\[\]*/\\?:]/g, "").slice(0, 31) || "Sheet";
-      XLSX.utils.book_append_sheet(wb, sheet, sheetName);
-    });
-
-    XLSX.writeFile(wb, `qc-export-${dateFrom}-to-${dateTo}.xlsx`);
-  }
-
+function Modal({ title, onClose, children }) {
   return (
-    <div>
-      <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Export</h2>
-      <div style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 20 }}>Export everything, or pick just the devices you need. Each device becomes its own sheet.</div>
-
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
-        <span style={{ fontSize: 12, color: "#7B8E8A" }}>From</span>
-        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={{ ...inputStyle, width: "auto" }} />
-        <span style={{ fontSize: 12, color: "#7B8E8A" }}>To</span>
-        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={{ ...inputStyle, width: "auto" }} />
-      </div>
-
-      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-        <button onClick={() => setSelectedIds(panels.map((p) => p.id))} style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 6, padding: "6px 12px", fontSize: 12 }}>Select all</button>
-        <button onClick={() => setSelectedIds([])} style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 6, padding: "6px 12px", fontSize: 12 }}>Select none</button>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 }}>
-        {panels.map((p) => (
-          <label key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, padding: "9px 14px", fontSize: 13.5, cursor: "pointer" }}>
-            <input type="checkbox" checked={selectedIds.includes(p.id)} onChange={() => toggle(p.id)} />
-            <span style={{ fontWeight: 600 }}>{p.name}</span>
-            <span style={{ color: "#8A9694", fontSize: 12 }}>{p.department}</span>
-          </label>
-        ))}
-      </div>
-
-      <button onClick={doExport} disabled={selectedIds.length === 0} style={{ background: "#0F7173", color: "#fff", border: "none", borderRadius: 8, padding: "11px 20px", fontWeight: 700, fontSize: 14, opacity: selectedIds.length === 0 ? 0.5 : 1, display: "flex", alignItems: "center", gap: 8 }}>
-        <Download size={15} /> Export {selectedIds.length === panels.length ? "everything" : `${selectedIds.length} device(s)`}
-      </button>
-    </div>
-  );
-}
-
-function Approvals({ items, panels, onReview, onReviewBulk }) {
-  const groups = useMemo(() => {
-    const map = {};
-    items.forEach(({ entry, analyteName }) => {
-      if (!map[entry.id]) map[entry.id] = { entry, analytes: [] };
-      map[entry.id].analytes.push(analyteName);
-    });
-    return Object.values(map).sort((a, b) => new Date(b.entry.created_at) - new Date(a.entry.created_at));
-  }, [items]);
-
-  if (groups.length === 0) return <div style={{ textAlign: "center", padding: "60px 20px", color: "#8A9694", fontSize: 13.5 }}>Nothing waiting for review. 🎉</div>;
-  return (
-    <div>
-      <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Approvals</h2>
-      <div style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 20 }}>All items are pre-selected — just click Approve to accept everything, or untick what you don't want and Decline it.</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {groups.map(({ entry, analytes }) => (
-          <ApprovalEntryCard key={entry.id} entry={entry} analytes={analytes} panel={panels.find((p) => p.id === entry.panel_id)} onReview={onReview} onReviewBulk={onReviewBulk} />
-        ))}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(15,25,26,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }}>
+      <div style={{ background: "#fff", borderRadius: 12, width: "100%", maxWidth: 440, maxHeight: "88vh", overflowY: "auto", padding: 22 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 17 }}>{title}</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#8A9694" }}><X size={18} /></button>
+        </div>
+        {children}
       </div>
     </div>
   );
 }
 
-function ApprovalEntryCard({ entry, analytes, panel, onReview, onReviewBulk }) {
-  const [selected, setSelected] = useState(() => new Set(analytes));
+const inputStyle = { width: "100%", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 11px", fontSize: 14, marginTop: 4, boxSizing: "border-box" };
+const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
+
+function LogConsumptionModal({ reagents, onClose, onSubmit }) {
+  const [typeFilter, setTypeFilter] = useState("");
+  const filteredReagents = typeFilter ? reagents.filter((r) => r.item_type === typeFilter) : reagents;
+  const names = [...new Set(filteredReagents.map((r) => r.name))];
+  const [name, setName] = useState(names[0] || "");
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(todayISO());
+  const [usedBy, setUsedBy] = useState("");
   const [note, setNote] = useState("");
+  const [testedByQC, setTestedByQC] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
-  function toggle(name) {
-    setSelected((s) => {
-      const next = new Set(s);
-      if (next.has(name)) next.delete(name); else next.add(name);
-      return next;
-    });
+  const lots = reagents.filter((r) => r.name === name).sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date));
+  const fefo = lots[0];
+
+  function changeType(t) {
+    setTypeFilter(t);
+    const list = t ? reagents.filter((r) => r.item_type === t) : reagents;
+    const firstName = [...new Set(list.map((r) => r.name))][0] || "";
+    setName(firstName);
   }
 
-  const selectedNames = analytes.filter((n) => selected.has(n));
-  const needsNote = selectedNames.some((n) => (colorRank[entry.colors?.[n]] ?? 0) > 0);
+  function handleScan(text) {
+    const match = reagents.find((r) => r.lot_number === text);
+    if (match) setName(match.name);
+    setShowScanner(false);
+  }
+
+  function submit() {
+    if (!fefo || !amount || !usedBy) return;
+    onSubmit({ reagentId: fefo.id, amount: Number(amount), date, usedBy, note, testedByQC });
+  }
+
+  if (reagents.length === 0) {
+    return <Modal title="Log consumption" onClose={onClose}><div style={{ fontSize: 13.5, color: "#7B8E8A" }}>No reagents in inventory yet. Receive stock first.</div></Modal>;
+  }
 
   return (
-    <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: "12px 16px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-        <div style={{ fontWeight: 700, fontSize: 14 }}>{panel ? panel.name : "Unknown"}</div>
-        <div style={{ fontSize: 12, color: "#8A9694" }}>{entry.date} · by {entry.done_by}</div>
+    <Modal title="Log daily consumption" onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <label style={labelStyle}>Type
+          <select style={inputStyle} value={typeFilter} onChange={(e) => changeType(e.target.value)}>
+            <option value="">All types</option>
+            <option value="Reagent">Reagent</option>
+            <option value="QC">QC</option>
+            <option value="Cal">Cal</option>
+          </select>
+        </label>
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+          <label style={{ ...labelStyle, flex: 1 }}>Reagent (click to browse, or type to search)
+            <SearchableSelect value={name} onChange={setName} options={names} placeholder="Search reagent name" allowCustom={false} style={{ marginTop: 4 }} />
+          </label>
+          <button type="button" onClick={() => setShowScanner(true)} style={{ background: "#F0F3F2", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 10px" }}><ScanLine size={16} /></button>
+        </div>
+        {names.length === 0 && <div style={{ fontSize: 12.5, color: "#8A9694" }}>No items of this type in stock.</div>}
+        {fefo && (
+          <div style={{ background: "#EAF6F4", border: "1px solid #C6E8E3", borderRadius: 7, padding: "9px 12px", fontSize: 12.5, color: "#0F5F5B" }}>
+            FEFO suggests <b>Lot {fefo.lot_number}</b> ({fefo.current_quantity} {fefo.unit} left, expires {fefo.expiry_date}){lots.length > 1 ? ` — ${lots.length} lots available` : ""}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 10 }}>
+          <label style={{ ...labelStyle, flex: 1 }}>Amount used ({fefo?.unit || "unit"})<input type="number" style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
+          <label style={{ ...labelStyle, flex: 1 }}>Date<input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} /></label>
+        </div>
+        <label style={labelStyle}>Used by<input style={inputStyle} value={usedBy} onChange={(e) => setUsedBy(e.target.value)} placeholder="Your name" /></label>
+        <label style={labelStyle}>Note (optional)<input style={inputStyle} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. daily QC run" /></label>
+        <YesNoRow label="Tested by QC" value={testedByQC} onChange={setTestedByQC} />
+        <button onClick={submit} style={{ marginTop: 6, background: "#0F7173", color: "#fff", border: "none", borderRadius: 8, padding: "11px", fontWeight: 700, fontSize: 14 }}>Save log</button>
       </div>
+      {showScanner && <BarcodeScanner onClose={() => setShowScanner(false)} onDetected={handleScan} />}
+    </Modal>
+  );
+}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-        {analytes.map((name) => {
-          const color = entry.colors?.[name] || "pending";
-          const m = COLOR_META[color];
-          const flags = entry.flags?.[name] || [];
-          return (
-            <label key={name} style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 13, background: "#F7F9F8", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input type="checkbox" checked={selected.has(name)} onChange={() => toggle(name)} />
-                <span style={{ fontWeight: 600, flex: 1 }}>{name}</span>
-                <span>{entry.values?.[name]}{panel?.analytes?.find((a) => a.name === name)?.unit}</span>
-                <span style={{ fontSize: 10, background: m.bg, color: m.fg, padding: "2px 7px", borderRadius: 4, fontWeight: 700 }}>{color}</span>
-              </div>
-              {flags.length > 0 && (
-                <div style={{ fontSize: 10.5, color: "#8A2E1F", marginLeft: 24 }}>{flags.map((f) => RULE_DESCRIPTIONS[f] || f).join(" · ")}</div>
-              )}
-            </label>
-          );
-        })}
+function EditReagentModal({ reagent, onClose, onSave }) {
+  const [form, setForm] = useState({ ...reagent });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  return (
+    <Modal title={`Edit lot ${reagent.lot_number}`} onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <label style={labelStyle}>Lot number<input style={inputStyle} value={form.lot_number} onChange={set("lot_number")} /></label>
+        <div style={{ display: "flex", gap: 10 }}>
+          <label style={{ ...labelStyle, flex: 1 }}>Quantity received<input type="number" style={inputStyle} value={form.quantity_received} onChange={set("quantity_received")} /></label>
+          <label style={{ ...labelStyle, flex: 1 }}>Current quantity<input type="number" style={inputStyle} value={form.current_quantity} onChange={set("current_quantity")} /></label>
+        </div>
+        <label style={labelStyle}>Expiry date<input type="date" style={inputStyle} value={form.expiry_date} onChange={set("expiry_date")} /></label>
+        <label style={labelStyle}>Low stock alert below<input type="number" style={inputStyle} value={form.low_stock_threshold} onChange={set("low_stock_threshold")} /></label>
+        <button
+          onClick={() => onSave({ ...form, quantity_received: Number(form.quantity_received), current_quantity: Number(form.current_quantity), low_stock_threshold: Number(form.low_stock_threshold) })}
+          style={{ marginTop: 6, background: "#0F7173", color: "#fff", border: "none", borderRadius: 8, padding: "11px", fontWeight: 700, fontSize: 14 }}
+        >Save changes</button>
       </div>
+    </Modal>
+  );
+}
 
-      {needsNote && <div style={{ fontSize: 11.5, color: "#8A2E1F", marginBottom: 6 }}>A selected result isn't green — a note is required even to approve it.</div>}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={needsNote ? "Note (required)" : "Note (optional)"} style={{ ...inputStyle, flex: 1, minWidth: 160 }} />
-        <button
-          disabled={selectedNames.length === 0 || (needsNote && !note.trim())}
-          onClick={() => onReviewBulk(entry, selectedNames, "approved", note)}
-          style={{ background: "#2F6B4F", color: "#fff", border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, opacity: selectedNames.length === 0 || (needsNote && !note.trim()) ? 0.5 : 1, display: "flex", alignItems: "center", gap: 4 }}
-        ><Check size={13} /> Approve selected ({selectedNames.length})</button>
-        <button
-          disabled={selectedNames.length === 0 || !note.trim()}
-          onClick={() => onReviewBulk(entry, selectedNames, "declined", note)}
-          style={{ background: "#C1432B", color: "#fff", border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, opacity: selectedNames.length === 0 || !note.trim() ? 0.5 : 1, display: "flex", alignItems: "center", gap: 4 }}
-        ><X size={13} /> Decline selected ({selectedNames.length})</button>
+function EditLogModal({ log, onClose, onSave }) {
+  const [form, setForm] = useState({ ...log });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  return (
+    <Modal title="Edit consumption log" onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <label style={labelStyle}>Amount<input type="number" style={inputStyle} value={form.amount} onChange={set("amount")} /></label>
+        <label style={labelStyle}>Date<input type="date" style={inputStyle} value={form.date} onChange={set("date")} /></label>
+        <label style={labelStyle}>Used by<input style={inputStyle} value={form.used_by} onChange={set("used_by")} /></label>
+        <label style={labelStyle}>Note<input style={inputStyle} value={form.note || ""} onChange={set("note")} /></label>
+        <YesNoRow label="Tested by QC" value={form.tested_by_qc} onChange={(v) => setForm((f) => ({ ...f, tested_by_qc: v }))} />
+        <button onClick={() => onSave({ ...form, amount: Number(form.amount) }, log)} style={{ marginTop: 6, background: "#0F7173", color: "#fff", border: "none", borderRadius: 8, padding: "11px", fontWeight: 700, fontSize: 14 }}>Save changes</button>
       </div>
-    </div>
+    </Modal>
   );
 }

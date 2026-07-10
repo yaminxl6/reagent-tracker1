@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { X, ScanLine, Check } from "lucide-react";
 import BarcodeScanner from "./BarcodeScanner";
 import { parseGS1 } from "./gs1Parser";
+import SearchableSelect from "./SearchableSelect";
 
 const INSPECTION_ITEMS = [
   { key: "intact_container", label: "Intact container" },
@@ -34,8 +35,7 @@ export default function ReceiveWizard({ presets, devices, role, departments, onC
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  function handleNameChange(e) {
-    const value = e.target.value;
+  function handleNameChange(value) {
     const p = presets.find((x) => x.name === value);
     if (p) setForm((f) => ({ ...f, name: p.name, department: p.department, unit: p.unit }));
     else setForm((f) => ({ ...f, name: value }));
@@ -68,22 +68,28 @@ export default function ReceiveWizard({ presets, devices, role, departments, onC
 
         {step === 1 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
-            <label style={labelStyle}>Item (type to search)
-              <input list="reagent-presets-list" style={inputStyle} value={form.name} onChange={handleNameChange} placeholder="Search or type a new name" />
-              <datalist id="reagent-presets-list">
-                {presets.map((p) => <option key={p.id} value={p.name} />)}
-              </datalist>
+            <label style={labelStyle}>Item (click to browse, or type to search)
+              <SearchableSelect
+                value={form.name}
+                onChange={handleNameChange}
+                options={presets.map((p) => p.name)}
+                placeholder="Search or type a new name"
+                style={{ marginTop: 4 }}
+              />
             </label>
             <label style={labelStyle}>Department
               <select style={inputStyle} value={form.department} onChange={(e) => setForm((f) => ({ ...f, department: e.target.value, device: "" }))}>
                 {departments.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
             </label>
-            <label style={labelStyle}>Device / analyzer (optional, type to search)
-              <input list="devices-list" style={inputStyle} value={form.device} onChange={set("device")} placeholder="e.g. Cobas c311" />
-              <datalist id="devices-list">
-                {devicesForDept.map((d) => <option key={d.id} value={d.name} />)}
-              </datalist>
+            <label style={labelStyle}>Device / analyzer (optional — click to browse, or type to search)
+              <SearchableSelect
+                value={form.device}
+                onChange={(v) => setForm((f) => ({ ...f, device: v }))}
+                options={devicesForDept.map((d) => d.name)}
+                placeholder="e.g. Cobas c311"
+                style={{ marginTop: 4 }}
+              />
             </label>
             <label style={labelStyle}>Type
               <select style={inputStyle} value={form.itemType} onChange={set("itemType")}>
