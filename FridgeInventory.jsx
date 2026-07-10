@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Trash2, Download, Refrigerator, Printer, Save, CheckCircle2 } from "lucide-react";
+import { Plus, Trash2, Download, Refrigerator, Printer, Save, CheckCircle2, ArrowLeft } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import FridgeIcon from "./FridgeIcon";
 
 const inputStyle = { border: "1px solid #C7D1CE", borderRadius: 6, padding: "6px 8px", fontSize: 13, boxSizing: "border-box" };
 const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
@@ -34,6 +35,7 @@ export default function FridgeInventory({ username, logActivity }) {
   const fridgeNames = useMemo(() => [...new Set((all || []).map((r) => r.refrigerator_name))], [all]);
   const itemSuggestions = useMemo(() => [...new Set((all || []).map((r) => r.item_name))], [all]);
   const deviceSuggestions = useMemo(() => [...new Set((all || []).map((r) => r.device_group).filter(Boolean))], [all]);
+  const itemCountFor = (name) => (all || []).filter((r) => r.refrigerator_name === name && r.month === month && r.item_name).length;
 
   const currentRows = (all || []).filter((r) => r.month === month && r.refrigerator_name === refrigeratorName);
   const groups = useMemo(() => {
@@ -121,21 +123,22 @@ export default function FridgeInventory({ username, logActivity }) {
       </div>
       <div className="no-print" style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 20 }}>Monthly stock count sheet — matches your paper form. Not shown in Reports. Edits are local until you press <b>Save</b>.</div>
 
-      <div className="no-print" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+      <div className="no-print" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16, alignItems: "flex-end" }}>
         <label style={labelStyle}>Month
           <input type="month" style={inputStyle} value={month} onChange={(e) => setMonth(e.target.value)} />
         </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>Refrigerator
-          <input list="fridge-names" style={{ ...inputStyle, width: "100%" }} value={refrigeratorName} onChange={(e) => setRefrigeratorName(e.target.value)} placeholder="e.g. maged" />
-          <datalist id="fridge-names">{fridgeNames.map((n) => <option key={n} value={n} />)}</datalist>
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>Counted by
-          <input style={{ ...inputStyle, width: "100%" }} value={countedBy} onChange={(e) => setCountedBy(e.target.value)} />
-        </label>
+        {refrigeratorName && (
+          <>
+            <button onClick={() => setRefrigeratorName("")} style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 600 }}>← All fridges</button>
+            <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>Counted by
+              <input style={{ ...inputStyle, width: "100%" }} value={countedBy} onChange={(e) => setCountedBy(e.target.value)} />
+            </label>
+          </>
+        )}
       </div>
 
       {!refrigeratorName ? (
-        <div style={{ textAlign: "center", padding: "40px 20px", color: "#8A9694", fontSize: 13.5 }}>Type or pick a refrigerator name above to start.</div>
+        <FridgePicker fridgeNames={fridgeNames} all={all} month={month} onSelect={setRefrigeratorName} />
       ) : (
         <div id="fridge-print-area">
           <div style={{ textAlign: "center", marginBottom: 4 }}>
@@ -208,3 +211,45 @@ export default function FridgeInventory({ username, logActivity }) {
 const thStyle = { border: "1px solid #C7D1CE", padding: "8px 10px", fontSize: 12.5, fontWeight: 700, background: "#F0F3F2", textAlign: "left" };
 const tdStyle = { border: "1px solid #C7D1CE", padding: "4px 6px" };
 const cellInputStyle = { border: "none", background: "transparent", fontSize: 13, width: "100%", padding: "4px 2px" };
+
+function FridgePicker({ fridgeNames, all, month, onSelect }) {
+  const [newName, setNewName] = useState("");
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14, marginBottom: 18 }}>
+        {fridgeNames.map((name) => {
+          const items = [...new Set((all || []).filter((r) => r.refrigerator_name === name && r.month === month).map((r) => r.item_name).filter(Boolean))];
+          return <FridgeCard key={name} name={name} items={items} onClick={() => onSelect(name)} />;
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", maxWidth: 340 }}>
+        <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New fridge name…" style={{ ...inputStyle, flex: 1 }} />
+        <button onClick={() => newName.trim() && onSelect(newName.trim())} style={{ background: "var(--accent-1)", color: "#fff", border: "none", borderRadius: 7, padding: "8px 14px", fontSize: 13, fontWeight: 700 }}>+ Add fridge</button>
+      </div>
+    </div>
+  );
+}
+
+// A CSS-drawn fridge: a body with a translucent "glass" window showing small
+// chips for whatever's currently logged inside, and the name on top.
+function FridgeCard({ name, items, onClick }) {
+  return (
+    <button onClick={onClick} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "center" }}>
+      <div style={{ width: "100%", aspectRatio: "3/4", background: "linear-gradient(160deg, #EAF0F5 0%, #D5E0E8 100%)", border: "2px solid #B7C3C0", borderRadius: 14, position: "relative", overflow: "hidden", boxShadow: "0 3px 8px rgba(0,0,0,0.08)" }}>
+        <div style={{ position: "absolute", top: "18%", left: 0, right: 0, height: 2, background: "#B7C3C0" }} />
+        <div style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", width: 26, height: 5, borderRadius: 3, background: "#9FB0AE" }} />
+        <div style={{ position: "absolute", top: "26%", left: "50%", transform: "translateX(-50%)", width: 8, height: 8, borderRadius: 4, background: "#8A9694" }} />
+        <div style={{ position: "absolute", top: "20%", bottom: 10, left: 10, right: 10, background: "rgba(255,255,255,0.35)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.6)", backdropFilter: "blur(1px)", display: "flex", flexWrap: "wrap", gap: 4, alignContent: "flex-start", padding: 8, overflow: "hidden" }}>
+          {items.length === 0 ? (
+            <span style={{ fontSize: 10.5, color: "#7B8E8A", margin: "auto" }}>empty</span>
+          ) : (
+            items.slice(0, 8).map((it) => (
+              <span key={it} style={{ background: "var(--accent-2)", color: "#fff", fontSize: 9, fontWeight: 700, padding: "3px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>{it}</span>
+            ))
+          )}
+        </div>
+      </div>
+      <div style={{ fontWeight: 700, fontSize: 13, marginTop: 8 }}>{name}</div>
+    </button>
+  );
+}

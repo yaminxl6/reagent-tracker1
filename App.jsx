@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Beaker, TrendingDown, Plus, Users, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator, Home as Home2, Cpu } from "lucide-react";
+import { Beaker, TrendingDown, Plus, Users, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Login from "./Login";
 import Settings from "./Settings";
@@ -54,6 +54,7 @@ export default function App() {
   const [activityLog, setActivityLog] = useState([]);
   const [tab, setTab] = useState("home");
   const [showWizard, setShowWizard] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
@@ -324,9 +325,37 @@ export default function App() {
           .no-print { display: none !important; }
           body { background: #fff !important; }
         }
+        .app-layout { display: flex; min-height: 100vh; }
+        .app-sidebar { width: 230px; flex-shrink: 0; background: var(--header-bg); display: flex; flex-direction: column; }
+        .app-main-col { flex: 1; min-width: 0; }
+        .mobile-topbar { display: none; }
+        @media (max-width: 860px) {
+          .app-sidebar {
+            position: fixed; top: 0; left: 0; height: 100vh; z-index: 60;
+            transform: translateX(-100%); transition: transform .22s ease; overflow-y: auto;
+          }
+          .app-sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,0.3); }
+          .sidebar-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 55; }
+          .mobile-topbar { display: flex; }
+        }
       `}</style>
 
-      <Header tab={tab} setTab={setTab} role={role} onAdd={() => setShowWizard(true)} onImport={() => setShowImport(true)} onLog={() => setShowLog(true)} onLogout={logout} onEnableNotif={enableNotifications} />
+      <div className="app-layout">
+        {sidebarOpen && <div className="sidebar-backdrop no-print" onClick={() => setSidebarOpen(false)} />}
+        <Sidebar
+          className={sidebarOpen ? "app-sidebar open" : "app-sidebar"}
+          tab={tab} setTab={(t) => { setTab(t); setSidebarOpen(false); }} role={role}
+          onAdd={() => { setShowWizard(true); setSidebarOpen(false); }}
+          onImport={() => { setShowImport(true); setSidebarOpen(false); }}
+          onLog={() => { setShowLog(true); setSidebarOpen(false); }}
+          onLogout={logout} onEnableNotif={enableNotifications}
+        />
+
+        <div className="app-main-col">
+          <div className="mobile-topbar no-print" style={{ background: "var(--header-bg)", padding: "12px 16px", alignItems: "center", gap: 10 }}>
+            <button onClick={() => setSidebarOpen(true)} style={{ background: "transparent", border: "1px solid #39494A", color: "#F0F3F2", borderRadius: 7, padding: "7px 9px", display: "flex" }}><MenuIcon size={16} /></button>
+            <div style={{ color: "#F0F3F2", fontWeight: 700, fontSize: 15 }}>Reagent Log</div>
+          </div>
 
       <main style={{ maxWidth: 980, margin: "0 auto", padding: "24px 20px 80px" }}>
         {counts.red > 0 && !bannerDismissed && tab !== "settings" && (
@@ -363,6 +392,8 @@ export default function App() {
         {tab === "charts" && (["admin","super","owner"].includes(role)) && <Charts reagents={reagents} logs={logs} />}
         {tab === "deletions" && ["super","owner"].includes(role) && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}
       </main>
+        </div>
+      </div>
 
       {showWizard && <ReceiveWizard presets={presets} devices={devices} role={role} departments={config.departments || []} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
       {showImport && (
@@ -378,41 +409,51 @@ export default function App() {
   );
 }
 
-function Header({ tab, setTab, role, onAdd, onImport, onLog, onLogout, onEnableNotif }) {
+function Sidebar({ className, tab, setTab, role, onAdd, onImport, onLog, onLogout, onEnableNotif }) {
   return (
-    <header className="no-print" style={{ borderBottom: "1px solid #D6DEDB", background: "var(--header-bg)" }}>
-      <div style={{ maxWidth: 980, margin: "0 auto", padding: "18px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Beaker size={22} color="#5FD9C7" />
-          <div>
-            <div style={{ color: "#F0F3F2", fontWeight: 700, fontSize: 17, letterSpacing: 0.2 }}>Reagent Log</div>
-            <div style={{ color: "#8FA39E", fontSize: 12, fontFamily: "'IBM Plex Mono', monospace" }}>Rabia Hospital · Lab Inventory</div>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <NavBtn active={tab === "home"} onClick={() => setTab("home")} icon={<Home2 size={15} />} label="Home" />
-          <NavBtn active={tab === "stock" || tab === "detail"} onClick={() => setTab("stock")} icon={<LayoutGrid size={15} />} label="Stock" />
-          <NavBtn active={tab === "fridges"} onClick={() => setTab("fridges")} icon={<Refrigerator size={15} />} label="Fridges" />
-          <NavBtn active={tab === "devices"} onClick={() => setTab("devices")} icon={<Cpu size={15} />} label="Devices" />
-          <NavBtn active={tab === "reports"} onClick={() => setTab("reports")} icon={<FileText size={15} />} label="Reports" />
-          {(["admin","super","owner"].includes(role)) && <NavBtn active={tab === "settings"} onClick={() => setTab("settings")} icon={<SlidersHorizontal size={15} />} label="Settings" />}
-          {(["admin","super","owner"].includes(role)) && <NavBtn active={tab === "charts"} onClick={() => setTab("charts")} icon={<BarChart3 size={15} />} label="Charts" />}
-          {["super","owner"].includes(role) && <NavBtn active={tab === "deletions"} onClick={() => setTab("deletions")} icon={<History size={15} />} label="Activity" />}
-          <button onClick={onEnableNotif} title="Enable browser alerts" style={{ background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "7px 9px" }}><Bell size={14} /></button>
-          <div style={{ width: 1, height: 22, background: "#39494A", margin: "0 4px" }} />
-          <button onClick={onLog} style={{ background: "transparent", border: "1px solid #5FD9C7", color: "#5FD9C7", borderRadius: 7, padding: "7px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><TrendingDown size={14} /> Log use</button>
-          <button onClick={onImport} title="Bulk import from Excel or Word" style={{ background: "transparent", border: "1px solid #8AA9E8", color: "#8AA9E8", borderRadius: 7, padding: "7px 9px" }}><Upload size={14} /></button>
-          <button onClick={onAdd} style={{ background: "var(--accent-1)", border: "none", color: "#fff", borderRadius: 7, padding: "7px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Plus size={14} /> Receive stock</button>
-          <button onClick={onLogout} title="Log out" style={{ background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "7px 9px" }}><LogOut size={14} /></button>
+    <aside className={className}>
+      <div style={{ padding: "20px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid rgba(255,255,255,0.12)" }}>
+        <Beaker size={22} color="#5FD9C7" />
+        <div>
+          <div style={{ color: "#F0F3F2", fontWeight: 700, fontSize: 16, letterSpacing: 0.2 }}>Reagent Log</div>
+          <div style={{ color: "#8FA39E", fontSize: 11, fontFamily: "'IBM Plex Mono', monospace" }}>Rabia Hospital</div>
         </div>
       </div>
-    </header>
+
+      <nav style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, padding: "14px 10px", overflowY: "auto" }}>
+        <SideBtn active={tab === "home"} onClick={() => setTab("home")} icon={<Home2 size={16} />} label="Home" />
+        <SideBtn active={tab === "stock" || tab === "detail"} onClick={() => setTab("stock")} icon={<LayoutGrid size={16} />} label="Stock" />
+        <SideBtn active={tab === "fridges"} onClick={() => setTab("fridges")} icon={<Refrigerator size={16} />} label="Fridges" />
+        <SideBtn active={tab === "devices"} onClick={() => setTab("devices")} icon={<Cpu size={16} />} label="Devices" />
+        <SideBtn active={tab === "reports"} onClick={() => setTab("reports")} icon={<FileText size={16} />} label="Reports" />
+        {(["admin","super","owner"].includes(role)) && <SideBtn active={tab === "settings"} onClick={() => setTab("settings")} icon={<SlidersHorizontal size={16} />} label="Settings" />}
+        {(["admin","super","owner"].includes(role)) && <SideBtn active={tab === "charts"} onClick={() => setTab("charts")} icon={<BarChart3 size={16} />} label="Charts" />}
+        {["super","owner"].includes(role) && <SideBtn active={tab === "deletions"} onClick={() => setTab("deletions")} icon={<History size={16} />} label="Activity" />}
+
+        <div style={{ height: 1, background: "rgba(255,255,255,0.12)", margin: "10px 6px" }} />
+
+        <button onClick={onLog} style={{ background: "transparent", border: "1px solid #5FD9C7", color: "#5FD9C7", borderRadius: 7, padding: "9px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, margin: "3px 6px" }}><TrendingDown size={14} /> Log use</button>
+        <button onClick={onAdd} style={{ background: "var(--accent-1)", border: "none", color: "#fff", borderRadius: 7, padding: "9px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, margin: "3px 6px" }}><Plus size={14} /> Receive stock</button>
+        <button onClick={onImport} style={{ background: "transparent", border: "1px solid #8AA9E8", color: "#8AA9E8", borderRadius: 7, padding: "9px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, margin: "3px 6px" }}><Upload size={14} /> Bulk import</button>
+      </nav>
+
+      <div style={{ padding: "12px 10px", borderTop: "1px solid rgba(255,255,255,0.12)", display: "flex", gap: 8 }}>
+        <button onClick={onEnableNotif} title="Enable browser alerts" style={{ flex: 1, background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "8px", display: "flex", justifyContent: "center" }}><Bell size={14} /></button>
+        <button onClick={onLogout} title="Log out" style={{ flex: 1, background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "8px", display: "flex", justifyContent: "center" }}><LogOut size={14} /></button>
+      </div>
+    </aside>
   );
 }
 
-function NavBtn({ active, onClick, icon, label }) {
-  return <button onClick={onClick} style={{ background: active ? "#2A3B3D" : "transparent", color: active ? "#F0F3F2" : "#8FA39E", border: "none", borderRadius: 7, padding: "7px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>{icon} {label}</button>;
+function SideBtn({ active, onClick, icon, label }) {
+  return (
+    <button onClick={onClick} style={{ background: active ? "rgba(255,255,255,0.12)" : "transparent", color: active ? "#F0F3F2" : "#8FA39E", border: "none", borderRadius: 7, padding: "10px 12px", fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 10, textAlign: "left" }}>
+      {icon} {label}
+    </button>
+  );
 }
+
+
 
 function StatCard({ status, count, label }) {
   const m = STATUS_META[status];
