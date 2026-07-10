@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Beaker, TrendingDown, Plus, Users, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload } from "lucide-react";
+import { Beaker, TrendingDown, Plus, Users, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Login from "./Login";
 import Settings from "./Settings";
@@ -7,6 +7,7 @@ import BarcodeScanner from "./BarcodeScanner";
 import ReceiveWizard, { YesNoRow } from "./ReceiveWizard";
 import Charts from "./Charts";
 import ReagentImport from "./ReagentImport";
+import FridgeInventory from "./FridgeInventory";
 
 const DEPT_PALETTE = ["#0F7173", "#B5473A", "#8A5A2B", "#5A6ACF", "#2F8F5B", "#B8860B", "#7A4FA3", "#C1432B"];
 function deptColor(dept, list) {
@@ -14,7 +15,7 @@ function deptColor(dept, list) {
   return DEPT_PALETTE[i % DEPT_PALETTE.length];
 }
 const INSPECTION_KEYS = ["intact_container", "complete_compound", "expiration_validity", "lot_matches_kit", "storage_condition_ok"];
-const ENTITY_LABELS = { reagent: "Reagent lot", log: "Usage log", config: "Settings", preset: "Preset", device: "Device", staff: "Employee account", department: "Department" };
+const ENTITY_LABELS = { reagent: "Reagent lot", log: "Usage log", config: "Settings", preset: "Preset", device: "Device", staff: "Employee account", department: "Department", fridge: "Fridge/equipment count" };
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const daysBetween = (a, b) => Math.round((new Date(a) - new Date(b)) / 86400000);
@@ -307,6 +308,15 @@ export default function App() {
         input, select { font-family: inherit; }
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-thumb { background: #C7D1CE; border-radius: 4px; }
+        :root {
+          --header-bg: linear-gradient(135deg, #123C4A 0%, #1B2B2E 100%);
+          --accent-1: #0F9B8E;      /* primary actions: receive, save, add */
+          --accent-1-dark: #0B7A70;
+          --accent-2: #3E6ACF;      /* secondary actions: export, import, nav */
+          --accent-2-bg: #E7EEFB;
+          --accent-3: #D8862B;      /* tertiary highlight: charts, special badges */
+          --accent-3-bg: #FBF0E2;
+        }
         @media print {
           .no-print { display: none !important; }
           body { background: #fff !important; }
@@ -344,6 +354,7 @@ export default function App() {
         )}
         {tab === "reports" && <Reports reagents={reagents} logs={logs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
         {tab === "settings" && (role === "admin" || role === "super") && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
+        {tab === "fridges" && <FridgeInventory username={username} logActivity={logActivity} />}
         {tab === "charts" && (role === "admin" || role === "super") && <Charts reagents={reagents} logs={logs} />}
         {tab === "deletions" && role === "super" && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}
       </main>
@@ -364,10 +375,10 @@ export default function App() {
 
 function Header({ tab, setTab, role, onAdd, onImport, onLog, onLogout, onEnableNotif }) {
   return (
-    <header className="no-print" style={{ borderBottom: "1px solid #D6DEDB", background: "#1B2B2E" }}>
+    <header className="no-print" style={{ borderBottom: "1px solid #D6DEDB", background: "var(--header-bg)" }}>
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "18px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Beaker size={22} color="#5FBFB0" />
+          <Beaker size={22} color="#5FD9C7" />
           <div>
             <div style={{ color: "#F0F3F2", fontWeight: 700, fontSize: 17, letterSpacing: 0.2 }}>Reagent Log</div>
             <div style={{ color: "#8FA39E", fontSize: 12, fontFamily: "'IBM Plex Mono', monospace" }}>Rabia Hospital · Lab Inventory</div>
@@ -376,14 +387,15 @@ function Header({ tab, setTab, role, onAdd, onImport, onLog, onLogout, onEnableN
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <NavBtn active={tab === "dashboard" || tab === "detail"} onClick={() => setTab("dashboard")} icon={<LayoutGrid size={15} />} label="Dashboard" />
           <NavBtn active={tab === "reports"} onClick={() => setTab("reports")} icon={<FileText size={15} />} label="Reports" />
+          <NavBtn active={tab === "fridges"} onClick={() => setTab("fridges")} icon={<Refrigerator size={15} />} label="Fridges" />
           {(role === "admin" || role === "super") && <NavBtn active={tab === "settings"} onClick={() => setTab("settings")} icon={<SlidersHorizontal size={15} />} label="Settings" />}
           {(role === "admin" || role === "super") && <NavBtn active={tab === "charts"} onClick={() => setTab("charts")} icon={<BarChart3 size={15} />} label="Charts" />}
           {role === "super" && <NavBtn active={tab === "deletions"} onClick={() => setTab("deletions")} icon={<History size={15} />} label="Activity" />}
           <button onClick={onEnableNotif} title="Enable browser alerts" style={{ background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "7px 9px" }}><Bell size={14} /></button>
           <div style={{ width: 1, height: 22, background: "#39494A", margin: "0 4px" }} />
-          <button onClick={onLog} style={{ background: "transparent", border: "1px solid #5FBFB0", color: "#5FBFB0", borderRadius: 7, padding: "7px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><TrendingDown size={14} /> Log use</button>
-          <button onClick={onImport} title="Bulk import from Excel or Word" style={{ background: "transparent", border: "1px solid #5FBFB0", color: "#5FBFB0", borderRadius: 7, padding: "7px 9px" }}><Upload size={14} /></button>
-          <button onClick={onAdd} style={{ background: "#5FBFB0", border: "none", color: "#0B2023", borderRadius: 7, padding: "7px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Plus size={14} /> Receive stock</button>
+          <button onClick={onLog} style={{ background: "transparent", border: "1px solid #5FD9C7", color: "#5FD9C7", borderRadius: 7, padding: "7px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><TrendingDown size={14} /> Log use</button>
+          <button onClick={onImport} title="Bulk import from Excel or Word" style={{ background: "transparent", border: "1px solid #8AA9E8", color: "#8AA9E8", borderRadius: 7, padding: "7px 9px" }}><Upload size={14} /></button>
+          <button onClick={onAdd} style={{ background: "var(--accent-1)", border: "none", color: "#fff", borderRadius: 7, padding: "7px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Plus size={14} /> Receive stock</button>
           <button onClick={onLogout} title="Log out" style={{ background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "7px 9px" }}><LogOut size={14} /></button>
         </div>
       </div>
@@ -415,7 +427,8 @@ function GaugeBar({ pct, color }) {
 }
 
 function Dashboard({ groups, counts, departments, role, onDeleteReagent, onSelect }) {
-  const [search, setSearch] = useState("");
+  const [deptFilter, setDeptFilter] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
 
   if (groups.length === 0) {
     return (
@@ -426,27 +439,37 @@ function Dashboard({ groups, counts, departments, role, onDeleteReagent, onSelec
       </div>
     );
   }
-  const term = search.trim().toLowerCase();
-  const filteredGroups = term
-    ? groups.filter((g) => g.name.toLowerCase().includes(term) || g.fefo.lot_number.toLowerCase().includes(term) || (g.fefo.device || "").toLowerCase().includes(term))
-    : groups;
+  const term = itemFilter.trim().toLowerCase();
+  const filteredGroups = groups
+    .filter((g) => (deptFilter ? g.department === deptFilter : true))
+    .filter((g) => (term ? g.name.toLowerCase().includes(term) || g.fefo.lot_number.toLowerCase().includes(term) || (g.fefo.device || "").toLowerCase().includes(term) : true));
   const byDept = departments.map((d) => ({ dept: d, items: filteredGroups.filter((g) => g.department === d) })).filter((x) => x.items.length);
 
   return (
     <div>
-      <input
-        placeholder="Search reagent, lot number, or device…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ width: "100%", border: "1px solid #C7D1CE", borderRadius: 8, padding: "10px 14px", fontSize: 14, marginBottom: 18, boxSizing: "border-box" }}
-      />
+      <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
+        <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} style={{ border: "1px solid #C7D1CE", borderRadius: 8, padding: "10px 12px", fontSize: 14, background: "#fff", minWidth: 160 }}>
+          <option value="">All departments</option>
+          {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <input
+          list="dashboard-item-suggestions"
+          placeholder="Reagent, lot number, or device…"
+          value={itemFilter}
+          onChange={(e) => setItemFilter(e.target.value)}
+          style={{ flex: 1, minWidth: 200, border: "1px solid #C7D1CE", borderRadius: 8, padding: "10px 14px", fontSize: 14, boxSizing: "border-box" }}
+        />
+        <datalist id="dashboard-item-suggestions">
+          {[...new Set(groups.map((g) => g.name))].map((n) => <option key={n} value={n} />)}
+        </datalist>
+      </div>
       <div style={{ display: "flex", gap: 12, marginBottom: 28, flexWrap: "wrap" }}>
         <StatCard status="red" count={counts.red} label="Critical — expired or out" />
         <StatCard status="yellow" count={counts.yellow} label="Watch — expiring or low" />
         <StatCard status="green" count={counts.green} label="Stable" />
       </div>
       {byDept.length === 0 && (
-        <div style={{ textAlign: "center", padding: "40px 20px", color: "#8A9694", fontSize: 13.5 }}>No matches for "{search}".</div>
+        <div style={{ textAlign: "center", padding: "40px 20px", color: "#8A9694", fontSize: 13.5 }}>No matches for this filter.</div>
       )}
       {byDept.map(({ dept, items }) => (
         <div key={dept} style={{ marginBottom: 26 }}>
@@ -767,6 +790,8 @@ function DeletionsLog({ activityLog, onClear }) {
     staff_remove: { label: "Employee account removed", color: "#516361", bg: "#F0F3F2" },
     department_add: { label: "Department added", color: "#516361", bg: "#F0F3F2" },
     department_remove: { label: "Department removed", color: "#516361", bg: "#F0F3F2" },
+    fridge_count: { label: "Fridge count logged", color: "#3E6ACF", bg: "#E7EEFB" },
+    fridge_count_delete: { label: "Fridge count removed", color: "#C1432B", bg: "#FBEAE6" },
   };
 
   return (
