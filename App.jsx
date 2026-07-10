@@ -263,11 +263,11 @@ export default function App() {
     return Object.entries(map).map(([name, items]) => {
       const sorted = [...items].sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date));
       const totalQty = items.reduce((s, i) => s + i.current_quantity, 0);
-      const worstStatus = items.some((i) => statusOf(i, config.expiry_warning_days) === "red") ? "red" : items.some((i) => statusOf(i, config.expiry_warning_days) === "yellow") ? "yellow" : "green";
+      const worstStatus = items.some((i) => statusOf(i, config?.expiry_warning_days) === "red") ? "red" : items.some((i) => statusOf(i, config?.expiry_warning_days) === "yellow") ? "yellow" : "green";
       const flagged = items.some(hasInspectionIssue);
       return { name, items: sorted, fefo: sorted[0], totalQty, status: worstStatus, department: items[0].department, unit: items[0].unit, flagged };
     });
-  }, [reagents, config.expiry_warning_days]);
+  }, [reagents, config?.expiry_warning_days]);
 
   const counts = useMemo(() => {
     const c = { red: 0, yellow: 0, green: 0, flagged: 0 };
@@ -329,7 +329,7 @@ export default function App() {
             group={groups.find((g) => g.name === selectedGroup.name) || selectedGroup}
             logs={logs.filter((l) => !l.deleted && (groups.find((g) => g.name === selectedGroup.name)?.items || []).some((i) => i.id === l.reagent_id))}
             role={role}
-            expiryWarningDays={config.expiry_warning_days}
+            expiryWarningDays={config?.expiry_warning_days}
             onBack={() => setTab("dashboard")}
             onEditReagent={setEditReagent} onDeleteReagent={deleteReagent}
             onEditLog={setEditLog} onDeleteLog={deleteLog}

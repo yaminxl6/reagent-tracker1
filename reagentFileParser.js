@@ -1,4 +1,6 @@
-import * as XLSX from "xlsx";
+// xlsx is imported dynamically inside the functions that need it (below),
+// matching how the rest of the app loads it — importing it statically here
+// would make Vite bundle two separate copies of the library.
 
 const COLUMN_HINTS = {
   name: ["name", "reagent", "item", "اسم"],
@@ -78,6 +80,7 @@ function extractRowsFromGrid(grid) {
 }
 
 async function parseSpreadsheet(file) {
+  const XLSX = await import("xlsx");
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });
   const sheet = wb.Sheets[wb.SheetNames[0]];
