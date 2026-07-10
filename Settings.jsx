@@ -1,14 +1,15 @@
 import React, { useState } from "react";
-import { Trash2, Plus, Save } from "lucide-react";
+import { Trash2, Plus, Save, Eye, EyeOff } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
-export default function Settings({ config, presets, role, staffAccounts, devices, reload }) {
+export default function Settings({ config, presets, role, staffAccounts, devices, logActivity, reload }) {
   const departments = config.departments || [];
   const [newPreset, setNewPreset] = useState({ name: "", department: departments[0] || "", unit: "mL" });
   const [newDept, setNewDept] = useState("");
   const [newDevice, setNewDevice] = useState({ name: "", department: departments[0] || "" });
   const [newStaff, setNewStaff] = useState({ username: "", password: "" });
   const [staffMsg, setStaffMsg] = useState("");
+  const [showPasswords, setShowPasswords] = useState(false);
   const [creds, setCreds] = useState({
     lab_username: config.lab_username,
     lab_password: config.lab_password,
@@ -17,18 +18,21 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     super_username: config.super_username,
     super_password: config.super_password,
     low_stock_default_percent: config.low_stock_default_percent,
+    expiry_warning_days: config.expiry_warning_days ?? 30,
   });
   const [msg, setMsg] = useState("");
 
   async function addDevice() {
     if (!newDevice.name) return;
     await supabase.from("devices").insert(newDevice);
+    await logActivity?.("device_add", "device", `${newDevice.name} (${newDevice.department})`);
     setNewDevice({ name: "", department: departments[0] || "" });
     reload();
   }
 
-  async function deleteDevice(id) {
+  async function deleteDevice(id, name) {
     await supabase.from("devices").delete().eq("id", id);
+    await logActivity?.("device_delete", "device", name);
     reload();
   }
 
@@ -36,26 +40,30 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     if (!newStaff.username || !newStaff.password) return;
     const { error } = await supabase.from("staff_accounts").insert(newStaff);
     setStaffMsg(error ? "That username may already exist." : "Account created.");
+    if (!error) await logActivity?.("staff_add", "staff", newStaff.username);
     setNewStaff({ username: "", password: "" });
     reload();
     setTimeout(() => setStaffMsg(""), 2500);
   }
 
-  async function removeStaffAccount(id) {
+  async function removeStaffAccount(id, uname) {
     if (!confirm("Remove this employee's account? They will no longer be able to sign in.")) return;
     await supabase.from("staff_accounts").delete().eq("id", id);
+    await logActivity?.("staff_remove", "staff", uname);
     reload();
   }
 
   async function addPreset() {
     if (!newPreset.name) return;
     await supabase.from("reagent_presets").insert(newPreset);
+    await logActivity?.("preset_add", "preset", newPreset.name);
     setNewPreset({ name: "", department: departments[0] || "", unit: "mL" });
     reload();
   }
 
-  async function deletePreset(id) {
+  async function deletePreset(id, name) {
     await supabase.from("reagent_presets").delete().eq("id", id);
+    await logActivity?.("preset_delete", "preset", name);
     reload();
   }
 
@@ -63,6 +71,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     const name = newDept.trim();
     if (!name || departments.includes(name)) return;
     await supabase.from("app_config").update({ departments: [...departments, name] }).eq("id", 1);
+    await logActivity?.("department_add", "department", name);
     setNewDept("");
     reload();
   }
@@ -70,12 +79,14 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   async function removeDepartment(name) {
     if (!confirm(`Remove "${name}"? Existing reagents already using it are not affected.`)) return;
     await supabase.from("app_config").update({ departments: departments.filter((d) => d !== name) }).eq("id", 1);
+    await logActivity?.("department_remove", "department", name);
     reload();
   }
 
   async function saveCreds() {
     const { error } = await supabase.from("app_config").update(creds).eq("id", 1);
     setMsg(error ? "Could not save." : "Saved.");
+    if (!error) await logActivity?.("settings_change", "config", "Login credentials or defaults updated");
     reload();
     setTimeout(() => setMsg(""), 2500);
   }
@@ -146,7 +157,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
           <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, padding: "9px 14px" }}>
             <div style={{ flex: 1, fontWeight: 600, fontSize: 13.5 }}>{p.name}</div>
             <div style={{ fontSize: 12.5, color: "#7B8E8A" }}>{p.department} · {p.unit}</div>
-            <button onClick={() => deletePreset(p.id)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={15} /></button>
+            <button onClick={() => deletePreset(p.id, p.name)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={15} /></button>
           </div>
         ))}
       </div>
@@ -181,7 +192,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
           <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, padding: "9px 14px" }}>
             <div style={{ flex: 1, fontWeight: 600, fontSize: 13.5 }}>{d.name}</div>
             <div style={{ fontSize: 12.5, color: "#7B8E8A" }}>{d.department}</div>
-            <button onClick={() => deleteDevice(d.id)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={15} /></button>
+            <button onClick={() => deleteDevice(d.id, d.name)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={15} /></button>
           </div>
         ))}
       </div>
@@ -202,6 +213,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
               />
               <input
                 placeholder="Password"
+                type={showPasswords ? "text" : "password"}
                 value={newStaff.password}
                 onChange={(e) => setNewStaff((s) => ({ ...s, password: e.target.value }))}
                 style={{ ...inputStyle, flex: 1, minWidth: 140, marginTop: 0 }}
@@ -217,7 +229,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
             {(staffAccounts || []).map((s) => (
               <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, padding: "9px 14px" }}>
                 <div style={{ flex: 1, fontWeight: 600, fontSize: 13.5 }}>{s.username}</div>
-                <button onClick={() => removeStaffAccount(s.id)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={15} /></button>
+                <button onClick={() => removeStaffAccount(s.id, s.username)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={15} /></button>
               </div>
             ))}
           </div>
@@ -228,20 +240,26 @@ export default function Settings({ config, presets, role, staffAccounts, devices
       <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", gap: 10 }}>
           <label style={{ ...labelStyle, flex: 1 }}>Shared staff username<input style={inputStyle} value={creds.lab_username} onChange={(e) => setCreds((c) => ({ ...c, lab_username: e.target.value }))} /></label>
-          <label style={{ ...labelStyle, flex: 1 }}>Shared staff password<input style={inputStyle} value={creds.lab_password} onChange={(e) => setCreds((c) => ({ ...c, lab_password: e.target.value }))} /></label>
+          <label style={{ ...labelStyle, flex: 1 }}>Shared staff password<input type={showPasswords ? "text" : "password"} style={inputStyle} value={creds.lab_password} onChange={(e) => setCreds((c) => ({ ...c, lab_password: e.target.value }))} /></label>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <label style={{ ...labelStyle, flex: 1 }}>Your (admin) username<input style={inputStyle} value={creds.admin_username} onChange={(e) => setCreds((c) => ({ ...c, admin_username: e.target.value }))} /></label>
-          <label style={{ ...labelStyle, flex: 1 }}>Your (admin) password<input style={inputStyle} value={creds.admin_password} onChange={(e) => setCreds((c) => ({ ...c, admin_password: e.target.value }))} /></label>
+          <label style={{ ...labelStyle, flex: 1 }}>Your (admin) password<input type={showPasswords ? "text" : "password"} style={inputStyle} value={creds.admin_password} onChange={(e) => setCreds((c) => ({ ...c, admin_password: e.target.value }))} /></label>
         </div>
         {role === "super" && (
           <div style={{ display: "flex", gap: 10 }}>
             <label style={{ ...labelStyle, flex: 1 }}>Super-user username<input style={inputStyle} value={creds.super_username} onChange={(e) => setCreds((c) => ({ ...c, super_username: e.target.value }))} /></label>
-            <label style={{ ...labelStyle, flex: 1 }}>Super-user password<input style={inputStyle} value={creds.super_password} onChange={(e) => setCreds((c) => ({ ...c, super_password: e.target.value }))} /></label>
+            <label style={{ ...labelStyle, flex: 1 }}>Super-user password<input type={showPasswords ? "text" : "password"} style={inputStyle} value={creds.super_password} onChange={(e) => setCreds((c) => ({ ...c, super_password: e.target.value }))} /></label>
           </div>
         )}
+        <button type="button" onClick={() => setShowPasswords((v) => !v)} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "#0F7173", fontSize: 12, fontWeight: 600, padding: 0, display: "flex", alignItems: "center", gap: 5 }}>
+          {showPasswords ? <EyeOff size={13} /> : <Eye size={13} />} {showPasswords ? "Hide passwords" : "Show passwords"}
+        </button>
         <label style={labelStyle}>Default low-stock alert (% of quantity received)
           <input type="number" style={inputStyle} value={creds.low_stock_default_percent} onChange={(e) => setCreds((c) => ({ ...c, low_stock_default_percent: Number(e.target.value) }))} />
+        </label>
+        <label style={labelStyle}>"Expiring soon" warning window (days before expiry)
+          <input type="number" style={inputStyle} value={creds.expiry_warning_days} onChange={(e) => setCreds((c) => ({ ...c, expiry_warning_days: Number(e.target.value) }))} />
         </label>
         <button onClick={saveCreds} style={{ background: "#0F7173", color: "#fff", border: "none", borderRadius: 8, padding: "11px", fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <Save size={14} /> Save settings
@@ -250,7 +268,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
       </div>
 
       <div style={{ fontSize: 11.5, color: "#8A9694", marginTop: 14 }}>
-        Note: these credentials are stored as plain text and are visible to anyone with the app link — fine for internal use, not for sensitive data.
+        Note: these credentials are stored as plain text in the database, and the database's anon key is visible in the browser — fine for internal use, not for sensitive data. Individual employee accounts (above) help with accountability, but full access control would need Supabase Auth, which is a bigger change than adjusting these settings.
       </div>
     </div>
   );

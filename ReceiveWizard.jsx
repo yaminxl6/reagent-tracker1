@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { X, ScanLine, Check } from "lucide-react";
 import BarcodeScanner from "./BarcodeScanner";
+import { parseGS1 } from "./gs1Parser";
 
 const INSPECTION_ITEMS = [
   { key: "intact_container", label: "Intact container" },
@@ -138,7 +139,15 @@ export default function ReceiveWizard({ presets, devices, role, departments, onC
         )}
       </div>
       {showScanner && (
-        <BarcodeScanner onClose={() => setShowScanner(false)} onDetected={(text) => { setForm((f) => ({ ...f, lotNumber: text })); setShowScanner(false); }} />
+        <BarcodeScanner onClose={() => setShowScanner(false)} onDetected={(text) => {
+          const gs1 = parseGS1(text);
+          if (gs1) {
+            setForm((f) => ({ ...f, lotNumber: gs1.lot || f.lotNumber, expiryDate: gs1.expiryDate || f.expiryDate }));
+          } else {
+            setForm((f) => ({ ...f, lotNumber: text }));
+          }
+          setShowScanner(false);
+        }} />
       )}
     </div>
   );

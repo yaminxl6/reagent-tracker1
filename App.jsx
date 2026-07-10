@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Beaker, TrendingDown, Plus, Users, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3 } from "lucide-react";
+import { Beaker, TrendingDown, Plus, Users, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Login from "./Login";
 import Settings from "./Settings";
 import BarcodeScanner from "./BarcodeScanner";
 import ReceiveWizard, { YesNoRow } from "./ReceiveWizard";
 import Charts from "./Charts";
+import ReagentImport from "./ReagentImport";
 
 const DEPT_PALETTE = ["#0F7173", "#B5473A", "#8A5A2B", "#5A6ACF", "#2F8F5B", "#B8860B", "#7A4FA3", "#C1432B"];
 function deptColor(dept, list) {
@@ -13,16 +14,17 @@ function deptColor(dept, list) {
   return DEPT_PALETTE[i % DEPT_PALETTE.length];
 }
 const INSPECTION_KEYS = ["intact_container", "complete_compound", "expiration_validity", "lot_matches_kit", "storage_condition_ok"];
+const ENTITY_LABELS = { reagent: "Reagent lot", log: "Usage log", config: "Settings", preset: "Preset", device: "Device", staff: "Employee account", department: "Department" };
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const daysBetween = (a, b) => Math.round((new Date(a) - new Date(b)) / 86400000);
 const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString() : "");
 
-function statusOf(item) {
+function statusOf(item, expiryWarningDays) {
   const dExp = daysBetween(item.expiry_date, todayISO());
   const lowStock = item.current_quantity <= item.low_stock_threshold;
   if (dExp < 0 || item.current_quantity <= 0) return "red";
-  if (dExp <= 30 || lowStock) return "yellow";
+  if (dExp <= (expiryWarningDays ?? 30) || lowStock) return "yellow";
   return "green";
 }
 
@@ -48,6 +50,7 @@ export default function App() {
   const [activityLog, setActivityLog] = useState([]);
   const [tab, setTab] = useState("dashboard");
   const [showWizard, setShowWizard] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [editReagent, setEditReagent] = useState(null);
@@ -109,6 +112,8 @@ export default function App() {
   }
 
   async function addReagent(entry) {
+    const dup = reagents.find((r) => !r.deleted && r.name === entry.name && r.lot_number === entry.lotNumber);
+    if (dup && !confirm(`Lot ${entry.lotNumber} already exists for ${entry.name}. Add it again anyway?`)) return;
     await supabase.from("reagents").insert({
       name: entry.name,
       department: entry.department,
@@ -130,7 +135,31 @@ export default function App() {
       receiving_notes: entry.receivingNotes,
       inspection_notes: entry.inspectionNotes,
     });
+    await logActivity("receive", "reagent", `${entry.name} — Lot ${entry.lotNumber}, ${entry.quantityReceived} ${entry.unit}, received by ${entry.receivedBy}`);
     setShowWizard(false);
+    loadAll();
+  }
+
+  async function bulkReceive(rows) {
+    for (const entry of rows) {
+      await supabase.from("reagents").insert({
+        name: entry.name,
+        department: entry.department,
+        item_type: entry.itemType || "Reagent",
+        device: entry.device || "",
+        lot_number: entry.lotNumber,
+        unit: entry.unit || "unit",
+        quantity_received: Number(entry.quantityReceived),
+        current_quantity: Number(entry.quantityReceived),
+        expiry_date: entry.expiryDate,
+        date_added: entry.receivedDate,
+        added_by: entry.receivedBy,
+        low_stock_threshold: Number(entry.lowStockThreshold) || Math.ceil(Number(entry.quantityReceived) * ((config.low_stock_default_percent || 15) / 100)),
+        intact_container: true, complete_compound: true, expiration_validity: true, lot_matches_kit: true, storage_condition_ok: true,
+      });
+    }
+    await logActivity("bulk_import", "reagent", `Imported ${rows.length} lot(s) from file`);
+    setShowImport(false);
     loadAll();
   }
 
@@ -142,6 +171,7 @@ export default function App() {
     await supabase.from("consumption_logs").insert({
       reagent_id: entry.reagentId, amount: entry.amount, date: entry.date, used_by: entry.usedBy, note: entry.note, tested_by_qc: entry.testedByQC,
     });
+    await logActivity("log_use", "log", `${item.name} — −${entry.amount} ${item.unit} used by ${entry.usedBy}${entry.note ? ` (${entry.note})` : ""}`);
     setShowLog(false);
     loadAll();
   }
@@ -233,11 +263,11 @@ export default function App() {
     return Object.entries(map).map(([name, items]) => {
       const sorted = [...items].sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date));
       const totalQty = items.reduce((s, i) => s + i.current_quantity, 0);
-      const worstStatus = items.some((i) => statusOf(i) === "red") ? "red" : items.some((i) => statusOf(i) === "yellow") ? "yellow" : "green";
+      const worstStatus = items.some((i) => statusOf(i, config.expiry_warning_days) === "red") ? "red" : items.some((i) => statusOf(i, config.expiry_warning_days) === "yellow") ? "yellow" : "green";
       const flagged = items.some(hasInspectionIssue);
       return { name, items: sorted, fefo: sorted[0], totalQty, status: worstStatus, department: items[0].department, unit: items[0].unit, flagged };
     });
-  }, [reagents]);
+  }, [reagents, config.expiry_warning_days]);
 
   const counts = useMemo(() => {
     const c = { red: 0, yellow: 0, green: 0, flagged: 0 };
@@ -270,20 +300,24 @@ export default function App() {
         input, select { font-family: inherit; }
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-thumb { background: #C7D1CE; border-radius: 4px; }
+        @media print {
+          .no-print { display: none !important; }
+          body { background: #fff !important; }
+        }
       `}</style>
 
-      <Header tab={tab} setTab={setTab} role={role} onAdd={() => setShowWizard(true)} onLog={() => setShowLog(true)} onLogout={logout} onEnableNotif={enableNotifications} />
+      <Header tab={tab} setTab={setTab} role={role} onAdd={() => setShowWizard(true)} onImport={() => setShowImport(true)} onLog={() => setShowLog(true)} onLogout={logout} onEnableNotif={enableNotifications} />
 
       <main style={{ maxWidth: 980, margin: "0 auto", padding: "24px 20px 80px" }}>
         {counts.red > 0 && !bannerDismissed && tab !== "settings" && (
-          <div style={{ background: "#FBEAE6", border: "1px solid #C1432B33", borderRadius: 10, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="no-print" style={{ background: "#FBEAE6", border: "1px solid #C1432B33", borderRadius: 10, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
             <AlertTriangle size={18} color="#C1432B" />
             <div style={{ flex: 1, fontSize: 13.5, color: "#8A2E1F" }}><b>{counts.red}</b> reagent{counts.red > 1 ? "s" : ""} expired or out of stock — needs attention now.</div>
             <button onClick={() => setBannerDismissed(true)} style={{ background: "none", border: "none", color: "#8A2E1F" }}><X size={16} /></button>
           </div>
         )}
         {counts.flagged > 0 && tab !== "settings" && (
-          <div style={{ background: "#FBF3DF", border: "1px solid #B8860B33", borderRadius: 10, padding: "12px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="no-print" style={{ background: "#FBF3DF", border: "1px solid #B8860B33", borderRadius: 10, padding: "12px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
             <ClipboardX size={18} color="#B8860B" />
             <div style={{ flex: 1, fontSize: 13.5, color: "#7A5C08" }}><b>{counts.flagged}</b> reagent{counts.flagged > 1 ? "s" : ""} failed an inspection check on receipt — review before use.</div>
           </div>
@@ -295,18 +329,24 @@ export default function App() {
             group={groups.find((g) => g.name === selectedGroup.name) || selectedGroup}
             logs={logs.filter((l) => !l.deleted && (groups.find((g) => g.name === selectedGroup.name)?.items || []).some((i) => i.id === l.reagent_id))}
             role={role}
+            expiryWarningDays={config.expiry_warning_days}
             onBack={() => setTab("dashboard")}
             onEditReagent={setEditReagent} onDeleteReagent={deleteReagent}
             onEditLog={setEditLog} onDeleteLog={deleteLog}
           />
         )}
         {tab === "reports" && <Reports reagents={reagents} logs={logs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
-        {tab === "settings" && (role === "admin" || role === "super") && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} reload={() => { ensureConfig(); loadAll(); }} />}
+        {tab === "settings" && (role === "admin" || role === "super") && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
         {tab === "charts" && (role === "admin" || role === "super") && <Charts reagents={reagents} logs={logs} />}
         {tab === "deletions" && role === "super" && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}
       </main>
 
       {showWizard && <ReceiveWizard presets={presets} devices={devices} role={role} departments={config.departments || []} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
+      {showImport && (
+        <Modal title="Bulk import reagents" onClose={() => setShowImport(false)}>
+          <ReagentImport departments={config.departments || []} onApply={bulkReceive} />
+        </Modal>
+      )}
       {showLog && <LogConsumptionModal reagents={reagents.filter((r) => !r.deleted)} onClose={() => setShowLog(false)} onSubmit={recordConsumption} />}
       {editReagent && <EditReagentModal reagent={editReagent} onClose={() => setEditReagent(null)} onSave={saveEditedReagent} />}
       {editLog && <EditLogModal log={editLog} onClose={() => setEditLog(null)} onSave={saveEditedLog} />}
@@ -315,9 +355,9 @@ export default function App() {
   );
 }
 
-function Header({ tab, setTab, role, onAdd, onLog, onLogout, onEnableNotif }) {
+function Header({ tab, setTab, role, onAdd, onImport, onLog, onLogout, onEnableNotif }) {
   return (
-    <header style={{ borderBottom: "1px solid #D6DEDB", background: "#1B2B2E" }}>
+    <header className="no-print" style={{ borderBottom: "1px solid #D6DEDB", background: "#1B2B2E" }}>
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "18px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Beaker size={22} color="#5FBFB0" />
@@ -335,6 +375,7 @@ function Header({ tab, setTab, role, onAdd, onLog, onLogout, onEnableNotif }) {
           <button onClick={onEnableNotif} title="Enable browser alerts" style={{ background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "7px 9px" }}><Bell size={14} /></button>
           <div style={{ width: 1, height: 22, background: "#39494A", margin: "0 4px" }} />
           <button onClick={onLog} style={{ background: "transparent", border: "1px solid #5FBFB0", color: "#5FBFB0", borderRadius: 7, padding: "7px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><TrendingDown size={14} /> Log use</button>
+          <button onClick={onImport} title="Bulk import from Excel or Word" style={{ background: "transparent", border: "1px solid #5FBFB0", color: "#5FBFB0", borderRadius: 7, padding: "7px 9px" }}><Upload size={14} /></button>
           <button onClick={onAdd} style={{ background: "#5FBFB0", border: "none", color: "#0B2023", borderRadius: 7, padding: "7px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Plus size={14} /> Receive stock</button>
           <button onClick={onLogout} title="Log out" style={{ background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "7px 9px" }}><LogOut size={14} /></button>
         </div>
@@ -447,7 +488,7 @@ function Dashboard({ groups, counts, departments, role, onDeleteReagent, onSelec
   );
 }
 
-function DetailView({ group, logs, role, onBack, onEditReagent, onDeleteReagent, onEditLog, onDeleteLog }) {
+function DetailView({ group, logs, role, expiryWarningDays, onBack, onEditReagent, onDeleteReagent, onEditLog, onDeleteLog }) {
   const last30 = logs.filter((l) => daysBetween(todayISO(), l.date) <= 30);
   const consumed30 = last30.reduce((s, l) => s + l.amount, 0);
   const avgDaily = consumed30 / 30;
@@ -486,7 +527,7 @@ function DetailView({ group, logs, role, onBack, onEditReagent, onDeleteReagent,
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 26 }}>
         {group.items.map((it, idx) => {
           const dExp = daysBetween(it.expiry_date, todayISO());
-          const m = STATUS_META[statusOf(it)];
+          const m = STATUS_META[statusOf(it, expiryWarningDays)];
           const failedItems = INSPECTION_KEYS.filter((k) => it[k] === false).map((k) => inspectionLabels[k]);
           return (
             <div key={it.id} style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, padding: "10px 14px" }}>
@@ -606,10 +647,13 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <h2 style={{ fontSize: 20, fontWeight: 700 }}>Full report</h2>
-        <button onClick={exportExcel} style={{ background: "#0F7173", color: "#fff", border: "none", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Download size={14} /> Export Excel</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => window.print()} className="no-print" style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Printer size={14} /> Print</button>
+          <button onClick={exportExcel} className="no-print" style={{ background: "#0F7173", color: "#fff", border: "none", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Download size={14} /> Export Excel</button>
+        </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20, alignItems: "center" }}>
+      <div className="no-print" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20, alignItems: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 12, color: "#7B8E8A" }}>From</span>
           <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={{ border: "1px solid #C7D1CE", borderRadius: 6, padding: "7px 10px", fontSize: 13 }} />
@@ -701,9 +745,21 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
 
 function DeletionsLog({ activityLog, onClear }) {
   const ACTION_META = {
+    receive: { label: "Received", color: "#2F6B4F", bg: "#E8F2EC" },
+    log_use: { label: "Logged use", color: "#0F7173", bg: "#EAF6F4" },
     edit: { label: "Edited", color: "#B8860B", bg: "#FBF3DF" },
     delete: { label: "Removed", color: "#C1432B", bg: "#FBEAE6" },
     purge: { label: "Erased permanently", color: "#8A2E1F", bg: "#FBEAE6" },
+    bulk_import: { label: "Bulk imported", color: "#2F6B4F", bg: "#E8F2EC" },
+    settings_change: { label: "Settings changed", color: "#516361", bg: "#F0F3F2" },
+    preset_add: { label: "Preset added", color: "#516361", bg: "#F0F3F2" },
+    preset_delete: { label: "Preset removed", color: "#516361", bg: "#F0F3F2" },
+    device_add: { label: "Device added", color: "#516361", bg: "#F0F3F2" },
+    device_delete: { label: "Device removed", color: "#516361", bg: "#F0F3F2" },
+    staff_add: { label: "Employee account added", color: "#516361", bg: "#F0F3F2" },
+    staff_remove: { label: "Employee account removed", color: "#516361", bg: "#F0F3F2" },
+    department_add: { label: "Department added", color: "#516361", bg: "#F0F3F2" },
+    department_remove: { label: "Department removed", color: "#516361", bg: "#F0F3F2" },
   };
 
   return (
@@ -727,7 +783,7 @@ function DeletionsLog({ activityLog, onClear }) {
               <span style={{ fontSize: 10.5, fontWeight: 700, color: m.color, background: m.bg, padding: "3px 8px", borderRadius: 4, textTransform: "uppercase", flexShrink: 0 }}>{m.label}</span>
               <div style={{ flex: 1, fontSize: 13 }}>
                 <div style={{ fontWeight: 600 }}>{e.description}</div>
-                <div style={{ fontSize: 11.5, color: "#8A9694", marginTop: 2 }}>{e.entity === "reagent" ? "Reagent lot" : "Usage log"} · by <b>{e.performed_by}</b> on {fmtDateTime(e.performed_at)}</div>
+                <div style={{ fontSize: 11.5, color: "#8A9694", marginTop: 2 }}>{ENTITY_LABELS[e.entity] || e.entity} · by <b>{e.performed_by}</b> on {fmtDateTime(e.performed_at)}</div>
               </div>
             </div>
           );
