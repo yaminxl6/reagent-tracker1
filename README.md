@@ -1,48 +1,47 @@
-# Reagent Log — دليل الإعداد من الصفر (النسخة الكاملة والنهائية)
+# QC Log — دليل الإعداد من الصفر
+
+موقع منفصل بالكامل عن موقع الريجنت — حسابات جديدة لكل شي.
 
 ## 1) Supabase (مشروع جديد)
-1. supabase.com/dashboard/new → أنشئ مشروع جديد باسم مختلف تمامًا عن أي مشروع سابق
-2. انتظر لين تصير حالته **Healthy**
-3. SQL Editor → New query → افتح ملف `supabase_schema.sql` من هذا المجلد → انسخ **الكل** والصقه → Run
-   - المفروض يطلع **Success. No rows returned** بدون أي أخطاء (لأنه مشروع فاضي جديد)
-4. Project Settings → Data API → انسخ **API URL** (بدون `/rest/v1/` بالآخر)
-5. Project Settings → API Keys → انسخ **Publishable key**
+1. supabase.com/dashboard/new → مشروع جديد باسم مختلف (مثلاً `qc-log`)
+2. انتظر لين يصير Healthy
+3. SQL Editor → New query → افتح `supabase_schema.sql` → انسخ الكل والصقه → Run
+4. Project Settings → Data API → انسخ API URL
+5. Project Settings → API Keys → انسخ Publishable key
 
 ## 2) GitHub (مستودع جديد)
-1. github.com/new → اسم جديد → Public → Create repository
-2. "uploading an existing file" → اسحب **كل الملفات** بهذا المجلد (12 ملف):
-   App.jsx, BarcodeScanner.jsx, Login.jsx, ReceiveWizard.jsx, Settings.jsx,
-   index.html, main.jsx, supabaseClient.js, package.json, vite.config.js, .env.example
+1. github.com/new → اسم جديد → Public → Create
+2. "uploading an existing file" → ارفع كل ملفات هذا المجلد **بما فيها مجلد `public` كامل**
 3. Commit changes
 
 ## 3) Vercel (مشروع جديد)
-1. vercel.com → Add New → Project → استورد نفس المستودع
-2. Environment Variables:
-   - `VITE_SUPABASE_URL` = رابط الـ API من خطوة 1
-   - `VITE_SUPABASE_ANON_KEY` = الـ Publishable key من خطوة 1
+1. vercel.com → Add New → Project → استورد المستودع
+2. Environment Variables: `VITE_SUPABASE_URL` و `VITE_SUPABASE_ANON_KEY`
 3. Deploy
 
-## 4) أول دخول (3 مستويات صلاحيات)
-- **الفريق (staff)**: `lab` / `lab` — يقدر يستقبل، يسجل استهلاك، ويعدّل لو غلط
-- **باسل (admin)**: `basil` / `admin123` — نفس صلاحيات الفريق + يقدر يحذف + يشوف Settings
-- **محمود (super)**: `mahmoud` / `123456` — كل الصلاحيات + صفحة Activity (سجل كامل لكل تعديل وحذف) + يقدر يمسح نهائيًا + يقدر يسوي حسابات موظفين
+## 4) الحسابات
+- **الفريق**: `lab` / `lab` — يسجل النتائج بس
+- **باسل**: `basil` / `admin123` — يراجع ويوافق/يرفض + Settings
+- **محمود**: `mahmoud` / `mahmoud123` — نفس صلاحية باسل بالضبط
+- **حسابك الخاص (owner)**: `owner` / `owner123` — صلاحيات كاملة، **غيّره فورًا من Settings**
 
-⚠️ **غيّر كلمات المرور الافتراضية فورًا** من صفحة Settings (تحتاج تسجل دخول admin أو super).
+## 5) قبل الاستخدام
+من Settings (أي حساب admin):
+1. أضف الأقسام إذا تحتاج
+2. أضف **لوحة QC (Panel)** — جهاز + مستوى (مثلاً "Beckman DXC700 Serum 1 QC")، القسم، رقم اللوت الحالي (لوت واحد يغطي كل تحاليل اللوحة)، وقائمة التحاليل (Glu, UA, Creat...) — تقدر تلصقها دفعة وحدة بدل ما تكتبها وحدة وحدة
 
-## 5) قبل ما يستخدمه الفريق
-من Settings (بحساب admin أو super):
-- أضف قائمة أسماء الريجنت الجاهزة (Presets) اللي يختار منها الفريق وقت الاستقبال
-- أضف أي أقسام إضافية غير الافتراضية (Chemistry, Hematology, Blood Bank, Microbiology)
-- (اختياري) محمود يقدر يضيف حساب خاص لكل موظف من قسم "Employee accounts"
+## كيف يشتغل يوميًا
+1. الموظف يفتح **"Today"**، يشوف كل اللوحات مقسّمة حسب القسم، يعبّي كل التحاليل بنفس النموذج، يحفظ
+2. النظام يحسب حالة كل تحليل تلقائيًا (Westgard) ويلوّنها
+3. باسل أو محمود يراجعون من **"Approvals"** — يوافقون أو يرفضون **اليوم كامل** (مو تحليل تحليل)، بيوزرهم تلقائي
+4. **"Monthly grid"** يعرض نفس شكل الورقة بالضبط: صفوف = التحاليل، أعمدة = أيام الشهر، Done by وReviewed by بالأسفل — وفيه تصدير Excel
 
-## الميزات الكاملة بهذي النسخة
-- استقبال بـ3 خطوات: التفاصيل (مع خيار Reagent/QC/Cal) → الفحص (Inspection) → ملاحظات
-- تسجيل استهلاك يومي مع QC testing وقت الاستخدام + مسح باركود/QR
-- Dashboard بالألوان (حرج/تحذير/مستقر) مقسّم حسب القسم
-- تعديل متاح للكل، حذف (إخفاء) لباسل ومحمود بس، مسح نهائي لمحمود بس
-- صفحة Activity: سجل كامل زمني لكل تعديل/حذف/مسح نهائي + زر مسح السجل كامل
-- Reports: بحث برقم اللوت، فلترة بالقسم، فترة زمنية، تفاصيل كاملة (استقبال+فحص+QC+من استخدم)، تصدير Excel
-- إعدادات: أقسام قابلة للتعديل، قائمة ريجنت جاهزة، حسابات موظفين، حد التنبيه الافتراضي
+## Westgard (يشتغل بالخلفية تلقائيًا)
+أول 20 نتيجة لكل تحليل+لوت تُجمع بدون تقييم. بعدها يُحسب المتوسط والانحراف المعياري تلقائيًا، وكل نتيجة جديدة تُفحص بقواعد 1-3s، 2-2s، 4-1s، 10x، و1-2s (تحذير). لو غيّرت رقم اللوت من Settings، يبدأ يبني خط أساس جديد من الصفر لهالوت.
 
-## دومين خاص (اختياري)
-Vercel → Project → Settings → Domains → أضف الدومين اللي تملكه.
+## تثبيت الموقع كتطبيق على الجوال (PWA)
+- **آيفون (Safari)**: زر المشاركة → Add to Home Screen
+- **أندرويد (Chrome)**: القائمة (⋮) → Add to Home screen
+
+## ملاحظة
+هذي نسخة تطابق شكل جدول الورق اللي تستخدمونه حاليًا. لو احتجتوا تعديل إضافي بعد التجربة، قولولي.
