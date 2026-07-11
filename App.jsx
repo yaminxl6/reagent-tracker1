@@ -670,13 +670,14 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
   const matchedLots = useMemo(() => {
     const term = searchLot.trim().toLowerCase();
     return reagents
+      .filter((r) => !r.deleted)
       .filter((r) => (term ? r.lot_number.toLowerCase().includes(term) : r.date_added >= dateFrom && r.date_added <= dateTo))
       .filter((r) => (deptFilter ? r.department === deptFilter : true))
       .sort((a, b) => new Date(b.date_added) - new Date(a.date_added));
   }, [reagents, searchLot, dateFrom, dateTo, deptFilter]);
 
   function logsFor(reagentId) {
-    return logs.filter((l) => l.reagent_id === reagentId).sort((a, b) => new Date(b.date) - new Date(a.date));
+    return logs.filter((l) => l.reagent_id === reagentId && !l.deleted).sort((a, b) => new Date(b.date) - new Date(a.date));
   }
 
   async function exportExcel() {
@@ -702,13 +703,12 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
         "Storage Condition": r.storage_condition_ok ? "Yes" : "No",
         "Receiving Note": r.receiving_notes || "",
         "Inspection Note": r.inspection_notes || "",
-        "Lot Deleted": r.deleted ? "Yes" : "No",
       };
       if (rLogs.length === 0) {
-        rows.push({ ...base, "Consumption Date": "", "Amount Used": "", "Used By": "", "Tested by QC": "", "Log Deleted": "" });
+        rows.push({ ...base, "Consumption Date": "", "Amount Used": "", "Used By": "", "Tested by QC": "" });
       } else {
         rLogs.forEach((l) => {
-          rows.push({ ...base, "Consumption Date": l.date, "Amount Used": l.amount, "Used By": l.used_by, "Tested by QC": l.tested_by_qc ? "Yes" : "No", "Log Deleted": l.deleted ? "Yes" : "No" });
+          rows.push({ ...base, "Consumption Date": l.date, "Amount Used": l.amount, "Used By": l.used_by, "Tested by QC": l.tested_by_qc ? "Yes" : "No" });
         });
       }
     });

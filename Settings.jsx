@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Trash2, Plus, Save, Eye, EyeOff } from "lucide-react";
+import { Trash2, Plus, Save, Eye, EyeOff, Pencil } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 const THEME_PRESETS = [
@@ -14,6 +14,11 @@ const THEME_PRESETS = [
 export default function Settings({ config, presets, role, staffAccounts, devices, reagents, logs, logActivity, reload }) {
   const [delDevice, setDelDevice] = useState("");
   const [delItem, setDelItem] = useState("");
+  const [reFrom, setReFrom] = useState("");
+  const [reTo, setReTo] = useState("");
+  const [reOldStaff, setReOldStaff] = useState("");
+  const [reNewStaff, setReNewStaff] = useState("");
+  const [reMsg, setReMsg] = useState("");
   const [delFrom, setDelFrom] = useState("");
   const [delTo, setDelTo] = useState("");
   const [delMsg, setDelMsg] = useState("");
@@ -73,6 +78,35 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     if (matchingLots.length) await supabase.from("reagents").delete().in("id", matchingLots.map((r) => r.id));
     await logActivity?.("bulk_import", "reagent", `Test-data cleanup: deleted ${matchingLots.length} lot(s), ${matchingLogs.length} log(s)${delDevice ? ` for ${delDevice}` : ""}${delItem ? ` matching "${delItem}"` : ""}${delFrom || delTo ? ` (${delFrom || "…"} to ${delTo || "…"})` : ""}`);
     setDelMsg(`Deleted ${matchingLots.length} lot(s) and ${matchingLogs.length} log(s).`);
+    reload();
+  }
+
+  const allStaffNames = [...new Set([...(reagents || []).map((r) => r.added_by), ...(logs || []).map((l) => l.used_by)])].filter(Boolean).sort();
+
+  const matchingReceivedBy = (reagents || []).filter((r) =>
+    reOldStaff && r.added_by === reOldStaff &&
+    (!reFrom || r.date_added >= reFrom) && (!reTo || r.date_added <= reTo)
+  );
+  const matchingUsedBy = (logs || []).filter((l) =>
+    reOldStaff && l.used_by === reOldStaff &&
+    (!reFrom || l.date >= reFrom) && (!reTo || l.date <= reTo)
+  );
+
+  async function performReassign() {
+    if (!reOldStaff || !reNewStaff) {
+      setReMsg("Pick both the current name and the new name first.");
+      return;
+    }
+    const total = matchingReceivedBy.length + matchingUsedBy.length;
+    if (total === 0) {
+      setReMsg("No matching records found for that name and date range.");
+      return;
+    }
+    if (!confirm(`Reassign ${matchingReceivedBy.length} received-by record(s) and ${matchingUsedBy.length} used-by record(s) from "${reOldStaff}" to "${reNewStaff}"?`)) return;
+    if (matchingReceivedBy.length) await supabase.from("reagents").update({ added_by: reNewStaff }).in("id", matchingReceivedBy.map((r) => r.id));
+    if (matchingUsedBy.length) await supabase.from("consumption_logs").update({ used_by: reNewStaff }).in("id", matchingUsedBy.map((l) => l.id));
+    await logActivity?.("settings_change", "config", `Reassigned ${total} record(s) from ${reOldStaff} to ${reNewStaff}${reFrom || reTo ? ` (${reFrom || "…"} to ${reTo || "…"})` : ""}`);
+    setReMsg(`Reassigned ${total} record(s).`);
     reload();
   }
 
@@ -407,6 +441,35 @@ export default function Settings({ config, presets, role, staffAccounts, devices
               <Trash2 size={14} /> Delete matching data
             </button>
             {delMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{delMsg}</div>}
+          </div>
+
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 24 }}>REASSIGN EMPLOYEE</div>
+          <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Fix a wrong name on past records without deleting anything — e.g. something was logged under the wrong employee for a period. Renames both "received by" and "used by" entries that match.</div>
+          <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>Current name on record
+                <select style={inputStyle} value={reOldStaff} onChange={(e) => setReOldStaff(e.target.value)}>
+                  <option value="">Choose…</option>
+                  {allStaffNames.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>Change to
+                <input style={inputStyle} value={reNewStaff} onChange={(e) => setReNewStaff(e.target.value)} placeholder="Correct name" />
+              </label>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>From date
+                <input type="date" style={inputStyle} value={reFrom} onChange={(e) => setReFrom(e.target.value)} />
+              </label>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>To date
+                <input type="date" style={inputStyle} value={reTo} onChange={(e) => setReTo(e.target.value)} />
+              </label>
+            </div>
+            <div style={{ fontSize: 12.5, color: "#516361", marginBottom: 10 }}>
+              Matches: <b>{matchingReceivedBy.length}</b> received-by record(s), <b>{matchingUsedBy.length}</b> used-by record(s)
+            </div>
+            <button onClick={performReassign} style={{ background: "var(--accent-2)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}>
+              <Pencil size={14} /> Reassign matching records
+            </button>
+            {reMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{reMsg}</div>}
           </div>
         </>
       )}
