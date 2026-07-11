@@ -11,7 +11,11 @@ const THEME_PRESETS = [
   { name: "Rose Gold",  colors: { accent1: "#B5473A", accent2: "#D8862B", headerStart: "#3A1F1B", headerEnd: "#1B2B2E" } },
 ];
 
-export default function Settings({ config, presets, role, staffAccounts, devices, logActivity, reload }) {
+export default function Settings({ config, presets, role, staffAccounts, devices, reagents, logs, logActivity, reload }) {
+  const [delDevice, setDelDevice] = useState("");
+  const [delFrom, setDelFrom] = useState("");
+  const [delTo, setDelTo] = useState("");
+  const [delMsg, setDelMsg] = useState("");
   const departments = config.departments || [];
   const [newPreset, setNewPreset] = useState({ name: "", department: departments[0] || "", unit: "mL" });
   const [newDept, setNewDept] = useState("");
@@ -41,6 +45,31 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     await logActivity?.("settings_change", "config", "Theme colors updated");
     reload();
     setTimeout(() => setThemeMsg(""), 3000);
+  }
+
+  const allDeviceNames = [...new Set([...(devices || []).map((d) => d.name), ...(reagents || []).map((r) => r.device).filter(Boolean)])];
+
+  const matchingLots = (reagents || []).filter((r) =>
+    (!delDevice || r.device === delDevice) &&
+    (!delFrom || r.date_added >= delFrom) &&
+    (!delTo || r.date_added <= delTo)
+  );
+  const matchingLogs = (logs || []).filter((l) => {
+    const lot = (reagents || []).find((r) => r.id === l.reagent_id);
+    return (!delDevice || lot?.device === delDevice) && (!delFrom || l.date >= delFrom) && (!delTo || l.date <= delTo);
+  });
+
+  async function performDelete() {
+    if (!delDevice && !delFrom && !delTo) {
+      setDelMsg("Pick at least a device or a date range first — this would otherwise match everything.");
+      return;
+    }
+    if (!confirm(`Delete ${matchingLots.length} reagent lot(s) and ${matchingLogs.length} usage log(s) matching this filter? This cannot be undone.`)) return;
+    if (matchingLogs.length) await supabase.from("consumption_logs").delete().in("id", matchingLogs.map((l) => l.id));
+    if (matchingLots.length) await supabase.from("reagents").delete().in("id", matchingLots.map((r) => r.id));
+    await logActivity?.("bulk_import", "reagent", `Test-data cleanup: deleted ${matchingLots.length} lot(s), ${matchingLogs.length} log(s)${delDevice ? ` for ${delDevice}` : ""}${delFrom || delTo ? ` (${delFrom || "…"} to ${delTo || "…"})` : ""}`);
+    setDelMsg(`Deleted ${matchingLots.length} lot(s) and ${matchingLogs.length} log(s).`);
+    reload();
   }
 
   async function addDevice() {
@@ -344,6 +373,36 @@ export default function Settings({ config, presets, role, staffAccounts, devices
       <div style={{ fontSize: 11.5, color: "#8A9694", marginTop: 14 }}>
         Note: these credentials are stored as plain text in the database, and the database's anon key is visible in the browser — fine for internal use, not for sensitive data. Individual employee accounts (above) help with accountability, but full access control would need Supabase Auth, which is a bigger change than adjusting these settings.
       </div>
+
+      {["super","owner"].includes(role) && (
+        <>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 30 }}>DATA TOOLS</div>
+          <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Bulk-delete reagent lots and usage logs — useful for clearing out test data. Filter by device and/or date range, review the count, then confirm.</div>
+          <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>Device (optional)
+                <select style={inputStyle} value={delDevice} onChange={(e) => setDelDevice(e.target.value)}>
+                  <option value="">All devices</option>
+                  {allDeviceNames.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </label>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>From date
+                <input type="date" style={inputStyle} value={delFrom} onChange={(e) => setDelFrom(e.target.value)} />
+              </label>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>To date
+                <input type="date" style={inputStyle} value={delTo} onChange={(e) => setDelTo(e.target.value)} />
+              </label>
+            </div>
+            <div style={{ fontSize: 12.5, color: "#516361", marginBottom: 10 }}>
+              Matches: <b>{matchingLots.length}</b> reagent lot(s), <b>{matchingLogs.length}</b> usage log(s)
+            </div>
+            <button onClick={performDelete} style={{ background: "#C1432B", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}>
+              <Trash2 size={14} /> Delete matching data
+            </button>
+            {delMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{delMsg}</div>}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -387,7 +387,7 @@ export default function App() {
           />
         )}
         {tab === "reports" && <Reports reagents={reagents} logs={logs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
-        {tab === "settings" && (["admin","super","owner"].includes(role)) && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
+        {tab === "settings" && (["admin","super","owner"].includes(role)) && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} reagents={reagents} logs={logs} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
         {tab === "fridges" && <FridgeInventory username={username} logActivity={logActivity} />}
         {tab === "charts" && (["admin","super","owner"].includes(role)) && <Charts reagents={reagents} logs={logs} />}
         {tab === "deletions" && ["super","owner"].includes(role) && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}
