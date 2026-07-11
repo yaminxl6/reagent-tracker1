@@ -73,19 +73,37 @@ export default function App() {
     setConfig(data);
   }
 
+  async function fetchAll(table, orderCol, ascending = true) {
+    let all = [];
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      let query = supabase.from(table).select("*").range(from, from + pageSize - 1);
+      if (orderCol) query = query.order(orderCol, { ascending });
+      const { data, error } = await query;
+      if (error) throw error;
+      all = all.concat(data || []);
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+    return all;
+  }
+
   async function loadAll() {
-    const { data: r, error: e1 } = await supabase.from("reagents").select("*").order("expiry_date");
-    const { data: l, error: e2 } = await supabase.from("consumption_logs").select("*");
-    const { data: p } = await supabase.from("reagent_presets").select("*").order("name");
-    const { data: s } = await supabase.from("staff_accounts").select("*").order("username");
-    const { data: a } = await supabase.from("audit_log").select("*").order("performed_at", { ascending: false });
-    const { data: dv } = await supabase.from("devices").select("*").order("name");
-    if (e1 || e2) {
+    let r, l;
+    try {
+      r = await fetchAll("reagents", "expiry_date");
+      l = await fetchAll("consumption_logs");
+    } catch (err) {
       setError("Could not connect to the database. Check Supabase settings.");
       setReagents([]);
       setLogs([]);
       return;
     }
+    const { data: p } = await supabase.from("reagent_presets").select("*").order("name");
+    const { data: s } = await supabase.from("staff_accounts").select("*").order("username");
+    const { data: a } = await supabase.from("audit_log").select("*").order("performed_at", { ascending: false });
+    const { data: dv } = await supabase.from("devices").select("*").order("name");
     setReagents(r || []);
     setLogs(l || []);
     setPresets(p || []);
