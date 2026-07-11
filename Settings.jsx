@@ -13,6 +13,7 @@ const THEME_PRESETS = [
 
 export default function Settings({ config, presets, role, staffAccounts, devices, reagents, logs, logActivity, reload }) {
   const [delDevice, setDelDevice] = useState("");
+  const [delItem, setDelItem] = useState("");
   const [delFrom, setDelFrom] = useState("");
   const [delTo, setDelTo] = useState("");
   const [delMsg, setDelMsg] = useState("");
@@ -51,23 +52,26 @@ export default function Settings({ config, presets, role, staffAccounts, devices
 
   const matchingLots = (reagents || []).filter((r) =>
     (!delDevice || r.device === delDevice) &&
+    (!delItem || r.name.toLowerCase().includes(delItem.trim().toLowerCase())) &&
     (!delFrom || r.date_added >= delFrom) &&
     (!delTo || r.date_added <= delTo)
   );
   const matchingLogs = (logs || []).filter((l) => {
     const lot = (reagents || []).find((r) => r.id === l.reagent_id);
-    return (!delDevice || lot?.device === delDevice) && (!delFrom || l.date >= delFrom) && (!delTo || l.date <= delTo);
+    return (!delDevice || lot?.device === delDevice) &&
+      (!delItem || lot?.name.toLowerCase().includes(delItem.trim().toLowerCase())) &&
+      (!delFrom || l.date >= delFrom) && (!delTo || l.date <= delTo);
   });
 
   async function performDelete() {
-    if (!delDevice && !delFrom && !delTo) {
-      setDelMsg("Pick at least a device or a date range first — this would otherwise match everything.");
+    if (!delDevice && !delItem && !delFrom && !delTo) {
+      setDelMsg("Pick at least a device, a test name, or a date range first — this would otherwise match everything.");
       return;
     }
     if (!confirm(`Delete ${matchingLots.length} reagent lot(s) and ${matchingLogs.length} usage log(s) matching this filter? This cannot be undone.`)) return;
     if (matchingLogs.length) await supabase.from("consumption_logs").delete().in("id", matchingLogs.map((l) => l.id));
     if (matchingLots.length) await supabase.from("reagents").delete().in("id", matchingLots.map((r) => r.id));
-    await logActivity?.("bulk_import", "reagent", `Test-data cleanup: deleted ${matchingLots.length} lot(s), ${matchingLogs.length} log(s)${delDevice ? ` for ${delDevice}` : ""}${delFrom || delTo ? ` (${delFrom || "…"} to ${delTo || "…"})` : ""}`);
+    await logActivity?.("bulk_import", "reagent", `Test-data cleanup: deleted ${matchingLots.length} lot(s), ${matchingLogs.length} log(s)${delDevice ? ` for ${delDevice}` : ""}${delItem ? ` matching "${delItem}"` : ""}${delFrom || delTo ? ` (${delFrom || "…"} to ${delTo || "…"})` : ""}`);
     setDelMsg(`Deleted ${matchingLots.length} lot(s) and ${matchingLogs.length} log(s).`);
     reload();
   }
@@ -377,7 +381,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
       {["super","owner"].includes(role) && (
         <>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 30 }}>DATA TOOLS</div>
-          <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Bulk-delete reagent lots and usage logs — useful for clearing out test data. Filter by device and/or date range, review the count, then confirm.</div>
+          <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Bulk-delete reagent lots and usage logs — useful for clearing out test data. Filter by device, test/item name, and/or date range, review the count, then confirm.</div>
           <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16 }}>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
               <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>Device (optional)
@@ -385,6 +389,9 @@ export default function Settings({ config, presets, role, staffAccounts, devices
                   <option value="">All devices</option>
                   {allDeviceNames.map((d) => <option key={d} value={d}>{d}</option>)}
                 </select>
+              </label>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>Test / item name (optional)
+                <input style={inputStyle} value={delItem} onChange={(e) => setDelItem(e.target.value)} placeholder="e.g. HCV" />
               </label>
               <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>From date
                 <input type="date" style={inputStyle} value={delFrom} onChange={(e) => setDelFrom(e.target.value)} />
