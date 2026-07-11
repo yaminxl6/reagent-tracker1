@@ -18,6 +18,11 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   const [reTo, setReTo] = useState("");
   const [reOldStaff, setReOldStaff] = useState("");
   const [reNewStaff, setReNewStaff] = useState("");
+  const [tnFrom, setTnFrom] = useState("");
+  const [tnTo, setTnTo] = useState("");
+  const [tnOldItem, setTnOldItem] = useState("");
+  const [tnNewItem, setTnNewItem] = useState("");
+  const [tnMsg, setTnMsg] = useState("");
   const [reMsg, setReMsg] = useState("");
   const [delFrom, setDelFrom] = useState("");
   const [delTo, setDelTo] = useState("");
@@ -107,6 +112,29 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     if (matchingUsedBy.length) await supabase.from("consumption_logs").update({ used_by: reNewStaff }).in("id", matchingUsedBy.map((l) => l.id));
     await logActivity?.("settings_change", "config", `Reassigned ${total} record(s) from ${reOldStaff} to ${reNewStaff}${reFrom || reTo ? ` (${reFrom || "…"} to ${reTo || "…"})` : ""}`);
     setReMsg(`Reassigned ${total} record(s).`);
+    reload();
+  }
+
+  const allItemNames = [...new Set((reagents || []).map((r) => r.name))].filter(Boolean).sort();
+
+  const matchingItemLots = (reagents || []).filter((r) =>
+    tnOldItem && r.name === tnOldItem &&
+    (!tnFrom || r.date_added >= tnFrom) && (!tnTo || r.date_added <= tnTo)
+  );
+
+  async function performItemRename() {
+    if (!tnOldItem || !tnNewItem.trim()) {
+      setTnMsg("Pick the current test name and type the correct one first.");
+      return;
+    }
+    if (matchingItemLots.length === 0) {
+      setTnMsg("No matching lots found for that test name and date range.");
+      return;
+    }
+    if (!confirm(`Rename ${matchingItemLots.length} lot(s) from "${tnOldItem}" to "${tnNewItem.trim()}"?`)) return;
+    await supabase.from("reagents").update({ name: tnNewItem.trim() }).in("id", matchingItemLots.map((r) => r.id));
+    await logActivity?.("settings_change", "config", `Renamed test "${tnOldItem}" → "${tnNewItem.trim()}" on ${matchingItemLots.length} lot(s)${tnFrom || tnTo ? ` (${tnFrom || "…"} to ${tnTo || "…"})` : ""}`);
+    setTnMsg(`Renamed ${matchingItemLots.length} lot(s).`);
     reload();
   }
 
@@ -470,6 +498,35 @@ export default function Settings({ config, presets, role, staffAccounts, devices
               <Pencil size={14} /> Reassign matching records
             </button>
             {reMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{reMsg}</div>}
+          </div>
+
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 24 }}>RENAME TEST / ITEM</div>
+          <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Fix a wrong test name on past lots without deleting anything — pick the current name, the date range it was used under, and what it should actually be.</div>
+          <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>Current test name
+                <select style={inputStyle} value={tnOldItem} onChange={(e) => setTnOldItem(e.target.value)}>
+                  <option value="">Choose…</option>
+                  {allItemNames.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>Change to
+                <input style={inputStyle} value={tnNewItem} onChange={(e) => setTnNewItem(e.target.value)} placeholder="Correct test name" />
+              </label>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>From date
+                <input type="date" style={inputStyle} value={tnFrom} onChange={(e) => setTnFrom(e.target.value)} />
+              </label>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>To date
+                <input type="date" style={inputStyle} value={tnTo} onChange={(e) => setTnTo(e.target.value)} />
+              </label>
+            </div>
+            <div style={{ fontSize: 12.5, color: "#516361", marginBottom: 10 }}>
+              Matches: <b>{matchingItemLots.length}</b> lot(s)
+            </div>
+            <button onClick={performItemRename} style={{ background: "var(--accent-2)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}>
+              <Pencil size={14} /> Rename matching lots
+            </button>
+            {tnMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{tnMsg}</div>}
           </div>
         </>
       )}
