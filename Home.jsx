@@ -1,11 +1,27 @@
-import React, { useMemo } from "react";
-import { LayoutGrid, Refrigerator, Cpu, ChevronRight, AlertTriangle, Clock, Monitor, TrendingDown } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
+import { LayoutGrid, Refrigerator, Cpu, ChevronRight, AlertTriangle, Clock, Monitor, TrendingDown, TrendingUp, Bell, FlaskConical } from "lucide-react";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const daysBetween = (a, b) => Math.round((new Date(a) - new Date(b)) / 86400000);
+const fmtToday = () => new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
 
-export default function Home({ counts, groups, reagents, logs, devices, onNavigate, onSelectGroup }) {
+function firstNameCaps(username) {
+  if (!username) return "";
+  return username.split(/[.\s]/).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
+}
+function roleLabel(role) {
+  return { owner: "Owner", super: "Super Admin", admin: "Lab Admin", staff: "Lab Specialist" }[role] || "Lab Specialist";
+}
+
+const cardStyle = {
+  background: "#fff", border: "1px solid #E5E7EB", borderRadius: 16,
+  boxShadow: "0 8px 24px rgba(0,0,0,0.06)", padding: 24,
+};
+
+export default function Home({ counts, groups, reagents, logs, devices, username, role, onNavigate, onSelectGroup }) {
   const today = todayISO();
+  const [chartMonth, setChartMonth] = useState(today.slice(0, 7));
 
   const lowStockLots = useMemo(
     () => (reagents || []).filter((r) => !r.deleted && r.current_quantity <= r.low_stock_threshold).sort((a, b) => a.current_quantity - b.current_quantity),
@@ -23,7 +39,7 @@ export default function Home({ counts, groups, reagents, logs, devices, onNaviga
     return (logs || [])
       .filter((l) => !l.deleted)
       .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 5)
+      .slice(0, 6)
       .map((l) => ({ ...l, reagent: byId[l.reagent_id] }))
       .filter((l) => l.reagent);
   }, [logs, reagents]);
@@ -33,12 +49,53 @@ export default function Home({ counts, groups, reagents, logs, devices, onNaviga
     return names.size;
   }, [devices, reagents]);
 
+  // Real month-over-month growth for the primary stat card (lots received).
+  const growthPct = useMemo(() => {
+    const thisMonthPrefix = today.slice(0, 7);
+    const d = new Date(today); d.setMonth(d.getMonth() - 1);
+    const lastMonthPrefix = d.toISOString().slice(0, 7);
+    const thisMonthCount = (reagents || []).filter((r) => !r.deleted && r.date_added?.startsWith(thisMonthPrefix)).length;
+    const lastMonthCount = (reagents || []).filter((r) => !r.deleted && r.date_added?.startsWith(lastMonthPrefix)).length;
+    if (lastMonthCount === 0) return thisMonthCount > 0 ? 100 : 0;
+    return Math.round(((thisMonthCount - lastMonthCount) / lastMonthCount) * 100);
+  }, [reagents, today]);
+
   const stats = [
-    { label: "Total Reagents", value: (groups || []).length, icon: LayoutGrid, color: "#2F6FED", bg: "#EAF1FE" },
-    { label: "Low Stock Items", value: lowStockLots.length, icon: AlertTriangle, color: "#D8862B", bg: "#FBF0E2" },
-    { label: "Expiring Soon", value: expiringSoon.length, icon: Clock, color: "#C1432B", bg: "#FBEAE6" },
-    { label: "Total Devices", value: deviceCount, icon: Monitor, color: "#2F8F5B", bg: "#E8F2EC" },
+    { label: "Total Reagents", value: (groups || []).length, icon: FlaskConical, color: "#2563EB", bg: "#EFF4FE", trend: growthPct },
+    { label: "Low Stock", value: lowStockLots.length, icon: AlertTriangle, color: "#D97706", bg: "#FEF3E2" },
+    { label: "Expiring Soon", value: expiringSoon.length, icon: Clock, color: "#DC2626", bg: "#FDECEC" },
+    { label: "Connected Devices", value: deviceCount, icon: Monitor, color: "#059669", bg: "#E7F7F1" },
   ];
+
+  // Usage Analytics — real daily totals for the selected month.
+  const chartData = useMemo(() => {
+    const [y, m] = chartMonth.split("-").map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const totals = Array.from({ length: daysInMonth }, (_, i) => ({ day: String(i + 1), total: 0 }));
+    (logs || []).forEach((l) => {
+      if (l.deleted || !l.date.startsWith(chartMonth)) return;
+      const dayIdx = Number(l.date.slice(8, 10)) - 1;
+      if (totals[dayIdx]) totals[dayIdx].total += Number(l.amount) || 0;
+    });
+    return totals;
+  }, [logs, chartMonth]);
+
+  const monthOptions = useMemo(() => {
+    const opts = [];
+    const d = new Date(today);
+    for (let i = 0; i < 6; i++) {
+      opts.push(d.toISOString().slice(0, 7));
+      d.setMonth(d.getMonth() - 1);
+    }
+    return opts;
+  }, [today]);
+
+  function statusBadge(days) {
+    if (days < 0) return { label: "Expired", bg: "#FDECEC", color: "#DC2626" };
+    if (days <= 30) return { label: `${days} days`, bg: "#FEF3E2", color: "#D97706" };
+    if (days <= 60) return { label: `${days} days`, bg: "#E7F7F1", color: "#059669" };
+    return { label: `${days} days`, bg: "#EFF4FE", color: "#2563EB" };
+  }
 
   const tiles = [
     { key: "stock", label: "Reagents & Stock", desc: "Inventory, expiry, and consumption", icon: LayoutGrid },
@@ -47,102 +104,197 @@ export default function Home({ counts, groups, reagents, logs, devices, onNaviga
   ];
 
   return (
-    <div>
-      <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Dashboard</h2>
-      <div style={{ fontSize: 13, color: "#8A93A0", marginBottom: 20 }}>Overview of reagents, usage, and inventory status.</div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 24 }}>
-        {stats.map((s) => (
-          <div key={s.label} style={{ background: "#fff", border: "1px solid #EDEFF2", borderRadius: 12, padding: "16px 16px", boxShadow: "0 1px 2px rgba(16,24,40,0.04)" }}>
-            <div style={{ width: 38, height: 38, borderRadius: 10, background: s.bg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
-              <s.icon size={18} color={s.color} />
+    <div style={{ fontFamily: "'Inter', -apple-system, sans-serif" }}>
+      {/* Top bar */}
+      <div className="dash-animate" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 32, flexWrap: "wrap", gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 30, fontWeight: 800, color: "#111827", letterSpacing: -0.5 }}>Dashboard</div>
+          <div style={{ fontSize: 14, color: "#6B7280", marginTop: 4 }}>Overview of laboratory inventory</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <button style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", color: "#6B7280" }}>
+            <Bell size={17} />
+          </button>
+          <div style={{ fontSize: 13, color: "#6B7280", fontWeight: 500 }}>{fmtToday()}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 38, height: 38, borderRadius: "50%", background: "var(--accent-1)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14 }}>
+              {(firstNameCaps(username)[0] || "?").toUpperCase()}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: "#1B2328" }}>{s.value}</div>
-            <div style={{ fontSize: 12, color: "#8A93A0", fontWeight: 500 }}>{s.label}</div>
+            <div style={{ display: window.innerWidth < 640 ? "none" : "block" }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: "#111827" }}>{firstNameCaps(username) || "User"}</div>
+              <div style={{ fontSize: 11.5, color: "#6B7280" }}>{roleLabel(role)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Row 1 — stat cards */}
+      <div className="dash-animate" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 24, marginBottom: 32 }}>
+        {stats.map((s) => (
+          <div key={s.label} className="dash-card" style={cardStyle}>
+            <div style={{ width: 52, height: 52, borderRadius: "50%", background: s.bg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+              <s.icon size={24} color={s.color} />
+            </div>
+            <div style={{ fontSize: 36, fontWeight: 800, color: "#111827", lineHeight: 1.1 }}>{s.value}</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 6 }}>
+              <div style={{ fontSize: 13.5, color: "#6B7280", fontWeight: 500 }}>{s.label}</div>
+              {typeof s.trend === "number" && (
+                <div style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 12, fontWeight: 700, color: s.trend >= 0 ? "#059669" : "#DC2626" }}>
+                  {s.trend >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}{Math.abs(s.trend)}%
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>
 
-      <div style={{ background: "#fff", border: "1px solid #EDEFF2", borderRadius: 12, padding: 18, marginBottom: 16, boxShadow: "0 1px 2px rgba(16,24,40,0.04)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Expiring Soon</div>
-          <button onClick={() => onNavigate("stock")} style={{ background: "none", border: "none", color: "#2F6FED", fontSize: 12.5, fontWeight: 600 }}>View all</button>
+      {/* Row 2 — Expiring Soon table + Usage Analytics chart */}
+      <div className="dash-animate" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 24, marginBottom: 32 }}>
+        <div className="dash-card" style={cardStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>Expiring Soon</div>
+            <button onClick={() => onNavigate("stock")} style={{ background: "none", border: "none", color: "var(--accent-1)", fontSize: 13, fontWeight: 600 }}>View all</button>
+          </div>
+          {expiringSoon.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#9CA3AF", padding: "16px 0" }}>Nothing expiring within 90 days.</div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    {["Reagent", "Batch", "Expiry", "Status"].map((h) => (
+                      <th key={h} style={{ textAlign: "left", fontSize: 12, fontWeight: 600, color: "#6B7280", padding: "0 0 10px", borderBottom: "1px solid #F3F4F6" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {expiringSoon.slice(0, 5).map((g) => {
+                    const days = daysBetween(g.fefo.expiry_date, today);
+                    const badge = statusBadge(days);
+                    return (
+                      <tr key={g.name} onClick={() => onSelectGroup(g)} style={{ cursor: "pointer" }}>
+                        <td style={{ padding: "12px 0", fontSize: 13.5, fontWeight: 600, color: "#111827", borderBottom: "1px solid #F9FAFB" }}>{g.name}</td>
+                        <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", fontFamily: "monospace", borderBottom: "1px solid #F9FAFB" }}>{g.fefo.lot_number}</td>
+                        <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", borderBottom: "1px solid #F9FAFB" }}>{g.fefo.expiry_date}</td>
+                        <td style={{ padding: "12px 0", borderBottom: "1px solid #F9FAFB" }}>
+                          <span style={{ background: badge.bg, color: badge.color, fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>{badge.label}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-        {expiringSoon.length === 0 ? (
-          <div style={{ fontSize: 13, color: "#8A93A0", padding: "8px 0" }}>Nothing expiring within 90 days.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {expiringSoon.slice(0, 5).map((g) => {
-              const days = daysBetween(g.fefo.expiry_date, today);
-              const late = days < 0;
-              return (
-                <button key={g.name} onClick={() => onSelectGroup(g)} style={{ display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", borderTop: "1px solid #F3F4F6", padding: "10px 0", textAlign: "left" }}>
-                  <div style={{ flex: 1, fontWeight: 600, fontSize: 13.5, color: "#1B2328" }}>{g.name}</div>
-                  <div style={{ fontSize: 12, color: "#8A93A0", fontFamily: "monospace" }}>{g.fefo.lot_number}</div>
-                  <div style={{ fontSize: 12, color: "#8A93A0" }}>{g.fefo.expiry_date}</div>
-                  <span style={{ background: late ? "#FBEAE6" : days <= 30 ? "#FBF0E2" : "#E8F2EC", color: late ? "#C1432B" : days <= 30 ? "#8A6D2F" : "#2F6B4F", fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20 }}>
-                    {late ? "expired" : `${days}d`}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
 
-      <div style={{ background: "#fff", border: "1px solid #EDEFF2", borderRadius: 12, padding: 18, marginBottom: 16, boxShadow: "0 1px 2px rgba(16,24,40,0.04)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Low Stock Alert</div>
-          <button onClick={() => onNavigate("stock")} style={{ background: "none", border: "none", color: "#2F6FED", fontSize: 12.5, fontWeight: 600 }}>View all</button>
+        <div className="dash-card" style={cardStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>Usage Analytics</div>
+            <select value={chartMonth} onChange={(e) => setChartMonth(e.target.value)} style={{ border: "1px solid #E5E7EB", borderRadius: 8, padding: "6px 10px", fontSize: 12.5, color: "#374151", fontWeight: 500 }}>
+              {monthOptions.map((m) => <option key={m} value={m}>{new Date(m + "-01").toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</option>)}
+            </select>
+          </div>
+          <ResponsiveContainer width="100%" height={230}>
+            <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="usageGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#2563EB" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#2563EB" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+              <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} interval={4} />
+              <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #E5E7EB", fontSize: 12.5 }} />
+              <Area type="monotone" dataKey="total" stroke="#2563EB" strokeWidth={2.5} fill="url(#usageGradient)" />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
-        {lowStockLots.length === 0 ? (
-          <div style={{ fontSize: 13, color: "#8A93A0", padding: "8px 0" }}>Nothing below its low-stock threshold.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {lowStockLots.slice(0, 5).map((r) => (
-              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, borderTop: "1px solid #F3F4F6", padding: "10px 0" }}>
-                <div style={{ flex: 1, fontWeight: 600, fontSize: 13.5, color: "#1B2328" }}>{r.name}</div>
-                <div style={{ fontSize: 12, color: "#8A93A0" }}>{r.current_quantity} / {r.low_stock_threshold} {r.unit}</div>
-                <span style={{ background: "#FBEAE6", color: "#C1432B", fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20 }}>Low</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
-      <div style={{ background: "#fff", border: "1px solid #EDEFF2", borderRadius: 12, padding: 18, marginBottom: 24, boxShadow: "0 1px 2px rgba(16,24,40,0.04)" }}>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Recent Usage</div>
-        {recentUsage.length === 0 ? (
-          <div style={{ fontSize: 13, color: "#8A93A0", padding: "8px 0" }}>No usage logged yet.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {recentUsage.map((l) => (
-              <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 10, borderTop: "1px solid #F3F4F6", padding: "10px 0" }}>
-                <TrendingDown size={14} color="#8A93A0" style={{ flexShrink: 0 }} />
-                <div style={{ flex: 1, fontWeight: 600, fontSize: 13.5, color: "#1B2328" }}>{l.reagent.name}</div>
-                <div style={{ fontSize: 12, color: "#8A93A0" }}>{l.used_by}</div>
-                <div style={{ fontSize: 12, color: "#8A93A0" }}>{l.date}</div>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: "#1B2328" }}>−{l.amount} {l.reagent.unit}</div>
-              </div>
-            ))}
+      {/* Row 3 — Low Stock table + Recent Usage table */}
+      <div className="dash-animate" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 24, marginBottom: 32 }}>
+        <div className="dash-card" style={cardStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>Low Stock Alert</div>
+            <button onClick={() => onNavigate("stock")} style={{ background: "none", border: "none", color: "var(--accent-1)", fontSize: 13, fontWeight: 600 }}>View all</button>
           </div>
-        )}
+          {lowStockLots.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#9CA3AF", padding: "16px 0" }}>Nothing below its low-stock threshold.</div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    {["Reagent", "Current Stock", "Minimum", "Status"].map((h) => (
+                      <th key={h} style={{ textAlign: "left", fontSize: 12, fontWeight: 600, color: "#6B7280", padding: "0 0 10px", borderBottom: "1px solid #F3F4F6" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lowStockLots.slice(0, 5).map((r) => (
+                    <tr key={r.id}>
+                      <td style={{ padding: "12px 0", fontSize: 13.5, fontWeight: 600, color: "#111827", borderBottom: "1px solid #F9FAFB" }}>{r.name}</td>
+                      <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", borderBottom: "1px solid #F9FAFB" }}>{r.current_quantity} {r.unit}</td>
+                      <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", borderBottom: "1px solid #F9FAFB" }}>{r.low_stock_threshold} {r.unit}</td>
+                      <td style={{ padding: "12px 0", borderBottom: "1px solid #F9FAFB" }}>
+                        <span style={{ background: "#FDECEC", color: "#DC2626", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>Low</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="dash-card" style={cardStyle}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#111827", marginBottom: 16 }}>Recent Usage</div>
+          {recentUsage.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#9CA3AF", padding: "16px 0" }}>No usage logged yet.</div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    {["Reagent", "Used By", "Device", "Time", "Qty"].map((h) => (
+                      <th key={h} style={{ textAlign: "left", fontSize: 12, fontWeight: 600, color: "#6B7280", padding: "0 0 10px", borderBottom: "1px solid #F3F4F6" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentUsage.map((l) => (
+                    <tr key={l.id}>
+                      <td style={{ padding: "12px 0", fontSize: 13.5, fontWeight: 600, color: "#111827", borderBottom: "1px solid #F9FAFB" }}>{l.reagent.name}</td>
+                      <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", borderBottom: "1px solid #F9FAFB" }}>{l.used_by}</td>
+                      <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", borderBottom: "1px solid #F9FAFB" }}>{l.reagent.device || "—"}</td>
+                      <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", borderBottom: "1px solid #F9FAFB" }}>{l.date}</td>
+                      <td style={{ padding: "12px 0", fontSize: 12.5, fontWeight: 600, color: "#111827", borderBottom: "1px solid #F9FAFB" }}>{l.amount} {l.reagent.unit}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div style={{ fontWeight: 700, fontSize: 13, color: "#8A93A0", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 10 }}>Quick links</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Quick links */}
+      <div className="dash-animate" style={{ fontSize: 12.5, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 12 }}>Quick links</div>
+      <div className="dash-animate" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {tiles.map((t) => {
           const Icon = t.icon;
           return (
-            <button key={t.key} onClick={() => onNavigate(t.key)} style={{ display: "flex", alignItems: "center", gap: 16, background: "#fff", border: "1px solid #EDEFF2", borderRadius: 12, padding: "16px 18px", textAlign: "left", boxShadow: "0 1px 2px rgba(16,24,40,0.04)" }}>
-              <div style={{ background: "var(--accent-2-bg)", borderRadius: 10, padding: 10, display: "flex" }}>
+            <button key={t.key} onClick={() => onNavigate(t.key)} className="dash-card" style={{ ...cardStyle, display: "flex", alignItems: "center", gap: 16, padding: "18px 20px", textAlign: "left", cursor: "pointer" }}>
+              <div style={{ background: "#EFF4FE", borderRadius: 12, padding: 11, display: "flex" }}>
                 <Icon size={20} color="var(--accent-1)" />
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 14.5 }}>{t.label}</div>
-                <div style={{ fontSize: 12, color: "#8A93A0" }}>{t.desc}</div>
+                <div style={{ fontWeight: 700, fontSize: 14.5, color: "#111827" }}>{t.label}</div>
+                <div style={{ fontSize: 12.5, color: "#6B7280" }}>{t.desc}</div>
               </div>
-              <ChevronRight size={18} color="#C7CDD5" />
+              <ChevronRight size={18} color="#D1D5DB" />
             </button>
           );
         })}

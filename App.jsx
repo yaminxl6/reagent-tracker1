@@ -343,8 +343,8 @@ export default function App() {
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-thumb { background: #C7D1CE; border-radius: 4px; }
         :root {
-          --header-bg: linear-gradient(135deg, ${config.theme_colors?.headerStart || "#2F6FED"} 0%, ${config.theme_colors?.headerEnd || "#0EA5A5"} 100%);
-          --accent-1: ${config.theme_colors?.accent1 || "#2F6FED"};      /* primary actions: receive, save, add */
+          --header-bg: linear-gradient(135deg, ${config.theme_colors?.headerStart || "#2563EB"} 0%, ${config.theme_colors?.headerEnd || "#0EA5A5"} 100%);
+          --accent-1: ${config.theme_colors?.accent1 || "#2563EB"};      /* primary actions: receive, save, add */
           --accent-1-dark: #1E56C7;
           --accent-2: ${config.theme_colors?.accent2 || "#0EA5A5"};      /* secondary actions: export, import, nav */
           --accent-2-bg: #EAF1FE;
@@ -355,7 +355,11 @@ export default function App() {
           .no-print { display: none !important; }
           body { background: #fff !important; }
         }
-        .app-layout { display: flex; min-height: 100vh; background: #F7F8FA; }
+        .app-layout { display: flex; min-height: 100vh; background: #F8FAFC; font-family: 'Inter', -apple-system, sans-serif; }
+        .dash-card { transition: all 0.25s ease; }
+        .dash-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(0,0,0,0.08) !important; }
+        @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .dash-animate { animation: fadeSlideUp 0.4s ease both; }
         .app-sidebar { width: 230px; flex-shrink: 0; background: #fff; border-right: 1px solid #EDEFF2; display: flex; flex-direction: column; }
         .app-main-col { flex: 1; min-width: 0; }
         .mobile-topbar { display: none; }
@@ -402,7 +406,7 @@ export default function App() {
           </div>
         )}
 
-        {tab === "home" && <Home counts={counts} groups={groups} reagents={reagents} logs={logs} devices={devices} onNavigate={setTab} onSelectGroup={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
+        {tab === "home" && <Home counts={counts} groups={groups} reagents={reagents} logs={logs} devices={devices} username={username} role={role} onNavigate={setTab} onSelectGroup={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
         {tab === "stock" && <Dashboard groups={groups} counts={counts} departments={config.departments || []} role={role} onDeleteReagent={deleteReagent} onSelect={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
         {tab === "devices" && <DeviceUsage />}
         {tab === "detail" && selectedGroup && (
