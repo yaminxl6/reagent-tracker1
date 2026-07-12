@@ -16,9 +16,9 @@ export default function Home({ counts, onNavigate }) {
         {tiles.map((t) => {
           const Icon = t.icon;
           return (
-            <button key={t.key} onClick={() => onNavigate(t.key)} style={{ display: "flex", alignItems: "center", gap: 16, background: "#fff", border: "1px solid #E1E8E5", borderLeft: "4px solid var(--accent-1)", borderRadius: 10, padding: "18px 18px", textAlign: "left" }}>
+            <button key={t.key} onClick={() => onNavigate(t.key)} style={{ display: "flex", alignItems: "center", gap: 16, background: "#fff", border: "1px solid #EDEFF2", borderRadius: 12, padding: "18px 18px", textAlign: "left", boxShadow: "0 1px 2px rgba(16,24,40,0.04)" }}>
               <div style={{ background: "var(--accent-2-bg)", borderRadius: 10, padding: 10, display: "flex" }}>
-                <Icon size={22} color="var(--accent-2)" />
+                <Icon size={22} color="var(--accent-1)" />
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 16 }}>{t.label}</div>

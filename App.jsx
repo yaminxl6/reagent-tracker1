@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Beaker, TrendingDown, Plus, Users, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon } from "lucide-react";
+import { Beaker, TrendingDown, Plus, Users, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Login from "./Login";
 import Settings from "./Settings";
@@ -304,8 +304,16 @@ export default function App() {
     if (counts.red === 0) return;
     const key = `notified-${todayISO()}`;
     if (localStorage.getItem(key)) return;
-    new Notification("Reagent Log — Critical items", { body: `${counts.red} reagent(s) expired or out of stock. Open the app to review.` });
-    localStorage.setItem(key, "1");
+    try {
+      new Notification("Reagent Log — Critical items", { body: `${counts.red} reagent(s) expired or out of stock. Open the app to review.` });
+      localStorage.setItem(key, "1");
+    } catch (err) {
+      // Some mobile browsers (e.g. Chrome/Edge on Android once a service
+      // worker is registered) refuse `new Notification()` directly and
+      // require ServiceWorkerRegistration.showNotification() instead.
+      // Skip silently rather than crash the app over a "nice to have".
+      localStorage.setItem(key, "1");
+    }
   }, [counts, reagents]);
 
   function enableNotifications() {
@@ -313,7 +321,11 @@ export default function App() {
       alert("Browser notifications aren't supported in this browser (common in in-app browsers like WhatsApp's — try opening the link in Chrome or Safari instead).");
       return;
     }
-    Notification.requestPermission();
+    try {
+      Notification.requestPermission();
+    } catch (err) {
+      alert("This browser doesn't allow enabling notifications this way. Try opening the site in a regular browser tab (not an installed/PWA version).");
+    }
   }
 
   if (!config || reagents === null || logs === null) {
@@ -331,11 +343,11 @@ export default function App() {
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-thumb { background: #C7D1CE; border-radius: 4px; }
         :root {
-          --header-bg: linear-gradient(135deg, ${config.theme_colors?.headerStart || "#123C4A"} 0%, ${config.theme_colors?.headerEnd || "#1B2B2E"} 100%);
-          --accent-1: ${config.theme_colors?.accent1 || "#0F9B8E"};      /* primary actions: receive, save, add */
-          --accent-1-dark: #0B7A70;
-          --accent-2: ${config.theme_colors?.accent2 || "#3E6ACF"};      /* secondary actions: export, import, nav */
-          --accent-2-bg: #E7EEFB;
+          --header-bg: linear-gradient(135deg, ${config.theme_colors?.headerStart || "#2F6FED"} 0%, ${config.theme_colors?.headerEnd || "#0EA5A5"} 100%);
+          --accent-1: ${config.theme_colors?.accent1 || "#2F6FED"};      /* primary actions: receive, save, add */
+          --accent-1-dark: #1E56C7;
+          --accent-2: ${config.theme_colors?.accent2 || "#0EA5A5"};      /* secondary actions: export, import, nav */
+          --accent-2-bg: #EAF1FE;
           --accent-3: #D8862B;      /* tertiary highlight: charts, special badges */
           --accent-3-bg: #FBF0E2;
         }
@@ -343,8 +355,8 @@ export default function App() {
           .no-print { display: none !important; }
           body { background: #fff !important; }
         }
-        .app-layout { display: flex; min-height: 100vh; }
-        .app-sidebar { width: 230px; flex-shrink: 0; background: var(--header-bg); display: flex; flex-direction: column; }
+        .app-layout { display: flex; min-height: 100vh; background: #F7F8FA; }
+        .app-sidebar { width: 230px; flex-shrink: 0; background: #fff; border-right: 1px solid #EDEFF2; display: flex; flex-direction: column; }
         .app-main-col { flex: 1; min-width: 0; }
         .mobile-topbar { display: none; }
         @media (max-width: 860px) {
@@ -370,9 +382,9 @@ export default function App() {
         />
 
         <div className="app-main-col">
-          <div className="mobile-topbar no-print" style={{ background: "var(--header-bg)", padding: "12px 16px", alignItems: "center", gap: 10 }}>
-            <button onClick={() => setSidebarOpen(true)} style={{ background: "transparent", border: "1px solid #39494A", color: "#F0F3F2", borderRadius: 7, padding: "7px 9px", display: "flex" }}><MenuIcon size={16} /></button>
-            <div style={{ color: "#F0F3F2", fontWeight: 700, fontSize: 15 }}>Reagent Log</div>
+          <div className="mobile-topbar no-print" style={{ background: "#fff", borderBottom: "1px solid #EDEFF2", padding: "12px 16px", alignItems: "center", gap: 10 }}>
+            <button onClick={() => setSidebarOpen(true)} style={{ background: "transparent", border: "1px solid #E1E5EA", color: "#3B4450", borderRadius: 7, padding: "7px 9px", display: "flex" }}><MenuIcon size={16} /></button>
+            <div style={{ color: "#1B2328", fontWeight: 700, fontSize: 15 }}>Reagent Log</div>
           </div>
 
       <main style={{ maxWidth: 980, margin: "0 auto", padding: "24px 20px 80px" }}>
@@ -428,44 +440,63 @@ export default function App() {
 }
 
 function Sidebar({ className, tab, setTab, role, onAdd, onImport, onLog, onLogout, onEnableNotif }) {
+  const isAdmin = ["admin","super","owner"].includes(role);
+  const isSuper = ["super","owner"].includes(role);
   return (
     <aside className={className}>
-      <div style={{ padding: "20px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid rgba(255,255,255,0.12)" }}>
-        <Beaker size={22} color="#5FD9C7" />
+      <div style={{ padding: "20px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #EDEFF2" }}>
+        <div style={{ width: 36, height: 36, borderRadius: 9, background: "var(--accent-2-bg)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Beaker size={19} color="var(--accent-1)" />
+        </div>
         <div>
-          <div style={{ color: "#F0F3F2", fontWeight: 700, fontSize: 16, letterSpacing: 0.2 }}>Reagent Log</div>
-          <div style={{ color: "#8FA39E", fontSize: 11, fontFamily: "'IBM Plex Mono', monospace" }}>Rabia Hospital</div>
+          <div style={{ color: "#1B2328", fontWeight: 700, fontSize: 15.5, letterSpacing: 0.1 }}>Reagent Log</div>
+          <div style={{ color: "#8A93A0", fontSize: 11 }}>Rabia Hospital</div>
         </div>
       </div>
 
-      <nav style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, padding: "14px 10px", overflowY: "auto" }}>
+      <nav style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, padding: "14px 12px", overflowY: "auto" }}>
         <SideBtn active={tab === "home"} onClick={() => setTab("home")} icon={<Home2 size={16} />} label="Home" />
+
+        <SideGroupLabel>Inventory</SideGroupLabel>
         <SideBtn active={tab === "stock" || tab === "detail"} onClick={() => setTab("stock")} icon={<LayoutGrid size={16} />} label="Stock" />
         <SideBtn active={tab === "fridges"} onClick={() => setTab("fridges")} icon={<Refrigerator size={16} />} label="Fridges" />
         <SideBtn active={tab === "devices"} onClick={() => setTab("devices")} icon={<Cpu size={16} />} label="Devices" />
+
+        <SideGroupLabel>Tracking</SideGroupLabel>
         <SideBtn active={tab === "reports"} onClick={() => setTab("reports")} icon={<FileText size={16} />} label="Reports" />
-        {(["admin","super","owner"].includes(role)) && <SideBtn active={tab === "settings"} onClick={() => setTab("settings")} icon={<SlidersHorizontal size={16} />} label="Settings" />}
-        {(["admin","super","owner"].includes(role)) && <SideBtn active={tab === "charts"} onClick={() => setTab("charts")} icon={<BarChart3 size={16} />} label="Charts" />}
-        {["super","owner"].includes(role) && <SideBtn active={tab === "deletions"} onClick={() => setTab("deletions")} icon={<History size={16} />} label="Activity" />}
+        {isAdmin && <SideBtn active={tab === "charts"} onClick={() => setTab("charts")} icon={<BarChart3 size={16} />} label="Charts" />}
+        {isSuper && <SideBtn active={tab === "deletions"} onClick={() => setTab("deletions")} icon={<History size={16} />} label="Activity" />}
 
-        <div style={{ height: 1, background: "rgba(255,255,255,0.12)", margin: "10px 6px" }} />
+        {isAdmin && (
+          <>
+            <SideGroupLabel>Management</SideGroupLabel>
+            <SideBtn active={tab === "settings"} onClick={() => setTab("settings")} icon={<SlidersHorizontal size={16} />} label="Settings" />
+          </>
+        )}
 
-        <button onClick={onLog} style={{ background: "transparent", border: "1px solid #5FD9C7", color: "#5FD9C7", borderRadius: 7, padding: "9px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, margin: "3px 6px" }}><TrendingDown size={14} /> Log use</button>
-        <button onClick={onAdd} style={{ background: "var(--accent-1)", border: "none", color: "#fff", borderRadius: 7, padding: "9px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, margin: "3px 6px" }}><Plus size={14} /> Receive stock</button>
-        <button onClick={onImport} style={{ background: "transparent", border: "1px solid #8AA9E8", color: "#8AA9E8", borderRadius: 7, padding: "9px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, margin: "3px 6px" }}><Upload size={14} /> Bulk import</button>
+        <div style={{ height: 1, background: "#EDEFF2", margin: "14px 4px" }} />
+
+        <button onClick={onAdd} style={{ background: "var(--accent-1)", border: "none", color: "#fff", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, margin: "3px 4px", boxShadow: "0 1px 2px rgba(0,0,0,0.08)" }}><Plus size={14} /> Receive stock</button>
+        <button onClick={onLog} style={{ background: "#fff", border: "1px solid #E1E5EA", color: "#3B4450", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, margin: "3px 4px" }}><TrendingDown size={14} /> Log use</button>
+        <button onClick={onImport} style={{ background: "#fff", border: "1px solid #E1E5EA", color: "#3B4450", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, margin: "3px 4px" }}><Upload size={14} /> Bulk import</button>
       </nav>
 
-      <div style={{ padding: "12px 10px", borderTop: "1px solid rgba(255,255,255,0.12)", display: "flex", gap: 8 }}>
-        <button onClick={onEnableNotif} title="Enable browser alerts" style={{ flex: 1, background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "8px", display: "flex", justifyContent: "center" }}><Bell size={14} /></button>
-        <button onClick={onLogout} title="Log out" style={{ flex: 1, background: "transparent", border: "1px solid #39494A", color: "#8FA39E", borderRadius: 7, padding: "8px", display: "flex", justifyContent: "center" }}><LogOut size={14} /></button>
+      <div style={{ padding: "12px 12px", borderTop: "1px solid #EDEFF2", display: "flex", gap: 8 }}>
+        <button onClick={onEnableNotif} title="Enable browser alerts" style={{ flex: 1, background: "#fff", border: "1px solid #E1E5EA", color: "#8A93A0", borderRadius: 8, padding: "8px", display: "flex", justifyContent: "center" }}><Bell size={14} /></button>
+        <button onClick={onLogout} title="Log out" style={{ flex: 1, background: "#fff", border: "1px solid #E1E5EA", color: "#8A93A0", borderRadius: 8, padding: "8px", display: "flex", justifyContent: "center" }}><LogOut size={14} /></button>
       </div>
     </aside>
   );
 }
 
+function SideGroupLabel({ children }) {
+  return <div style={{ fontSize: 10.5, fontWeight: 700, color: "#A6ADB8", textTransform: "uppercase", letterSpacing: 0.6, padding: "14px 12px 6px" }}>{children}</div>;
+}
+
 function SideBtn({ active, onClick, icon, label }) {
   return (
-    <button onClick={onClick} style={{ background: active ? "rgba(255,255,255,0.12)" : "transparent", color: active ? "#F0F3F2" : "#8FA39E", border: "none", borderRadius: 7, padding: "10px 12px", fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 10, textAlign: "left" }}>
+    <button onClick={onClick} style={{ background: active ? "var(--accent-2-bg)" : "transparent", color: active ? "var(--accent-1)" : "#5C6570", border: "none", borderRadius: 8, padding: "9px 12px", fontSize: 13.5, fontWeight: active ? 700 : 600, display: "flex", alignItems: "center", gap: 10, textAlign: "left" }}>
+
       {icon} {label}
     </button>
   );
@@ -475,10 +506,16 @@ function SideBtn({ active, onClick, icon, label }) {
 
 function StatCard({ status, count, label }) {
   const m = STATUS_META[status];
+  const Icon = status === "red" ? AlertTriangle : status === "yellow" ? Clock : CheckCircle2;
   return (
-    <div style={{ background: m.bg, border: `1px solid ${m.color}22`, borderRadius: 10, padding: "16px 18px", flex: 1, minWidth: 140 }}>
-      <div style={{ fontSize: 28, fontWeight: 700, color: m.color, fontFamily: "'IBM Plex Mono', monospace" }}>{count}</div>
-      <div style={{ fontSize: 13, color: "#516361", fontWeight: 500 }}>{label}</div>
+    <div style={{ background: "#fff", border: "1px solid #EDEFF2", borderRadius: 12, padding: "16px 18px", flex: 1, minWidth: 150, display: "flex", alignItems: "center", gap: 14, boxShadow: "0 1px 2px rgba(16,24,40,0.04)" }}>
+      <div style={{ width: 42, height: 42, borderRadius: 10, background: m.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon size={19} color={m.color} />
+      </div>
+      <div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: "#1B2328" }}>{count}</div>
+        <div style={{ fontSize: 12.5, color: "#8A93A0", fontWeight: 500 }}>{label}</div>
+      </div>
     </div>
   );
 }

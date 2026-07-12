@@ -10,6 +10,8 @@ const THEME_PRESETS = [
   { name: "Amber Slate",colors: { accent1: "#D8862B", accent2: "#3E6ACF", headerStart: "#2A2420", headerEnd: "#1B2B2E" } },
   { name: "Rose Gold",  colors: { accent1: "#B5473A", accent2: "#D8862B", headerStart: "#3A1F1B", headerEnd: "#1B2B2E" } },
   { name: "Sunset",     colors: { accent1: "#E8722C", accent2: "#D94F70", headerStart: "#4A1F2E", headerEnd: "#2A1420" } },
+  { name: "Claude",     colors: { accent1: "#CC785C", accent2: "#B0755A", headerStart: "#2D2520", headerEnd: "#1A1614" } },
+  { name: "Clean Blue", colors: { accent1: "#2F6FED", accent2: "#0EA5A5", headerStart: "#2F6FED", headerEnd: "#0EA5A5" } },
 ];
 
 export default function Settings({ config, presets, role, staffAccounts, devices, reagents, logs, logActivity, reload }) {
@@ -55,7 +57,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     low_stock_default_percent: config.low_stock_default_percent,
     expiry_warning_days: config.expiry_warning_days ?? 30,
   });
-  const [theme, setTheme] = useState(config.theme_colors || { accent1: "#0F9B8E", accent2: "#3E6ACF", headerStart: "#123C4A", headerEnd: "#1B2B2E" });
+  const [theme, setTheme] = useState(config.theme_colors || { accent1: "#2F6FED", accent2: "#0EA5A5", headerStart: "#2F6FED", headerEnd: "#0EA5A5" });
   const [themeMsg, setThemeMsg] = useState("");
   const [msg, setMsg] = useState("");
 
