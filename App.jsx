@@ -292,11 +292,31 @@ export default function App() {
     });
   }, [reagents, config?.expiry_warning_days]);
 
+  // Auto-archiving: a lot that expired more than 30 days ago drops out of
+  // the day-to-day views (Stock, Fridges, Devices) automatically, but is
+  // never deleted — it always stays fully visible in Reports.
+  const ARCHIVE_GRACE_DAYS = 30;
+  function isArchivedLot(r) {
+    return daysBetween(r.expiry_date, todayISO()) < -ARCHIVE_GRACE_DAYS;
+  }
+  const activeGroups = useMemo(() => {
+    return groups
+      .map((g) => {
+        const liveItems = g.items.filter((r) => !isArchivedLot(r));
+        if (liveItems.length === 0) return null;
+        const totalQty = liveItems.reduce((s, i) => s + i.current_quantity, 0);
+        const worstStatus = liveItems.some((i) => statusOf(i, config?.expiry_warning_days) === "red") ? "red" : liveItems.some((i) => statusOf(i, config?.expiry_warning_days) === "yellow") ? "yellow" : "green";
+        const flagged = liveItems.some(hasInspectionIssue);
+        return { ...g, items: liveItems, fefo: liveItems[0], totalQty, status: worstStatus, flagged };
+      })
+      .filter(Boolean);
+  }, [groups, config?.expiry_warning_days]);
+
   const counts = useMemo(() => {
     const c = { red: 0, yellow: 0, green: 0, flagged: 0 };
-    groups.forEach((g) => { c[g.status]++; if (g.flagged) c.flagged++; });
+    activeGroups.forEach((g) => { c[g.status]++; if (g.flagged) c.flagged++; });
     return c;
-  }, [groups]);
+  }, [activeGroups]);
 
   useEffect(() => {
     if (typeof Notification === "undefined") return;
@@ -407,8 +427,8 @@ export default function App() {
           </div>
         )}
 
-        {tab === "home" && <Home counts={counts} groups={groups} reagents={reagents} logs={logs} devices={devices} username={username} role={role} onNavigate={setTab} onSelectGroup={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
-        {tab === "stock" && <Dashboard groups={groups} counts={counts} departments={config.departments || []} role={role} onDeleteReagent={deleteReagent} onSelect={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
+        {tab === "home" && <Home counts={counts} groups={activeGroups} reagents={reagents} logs={logs} devices={devices} username={username} role={role} onNavigate={setTab} onSelectGroup={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
+        {tab === "stock" && <Dashboard groups={activeGroups} allNames={[...new Set(groups.map((g) => g.name))]} counts={counts} departments={config.departments || []} role={role} onDeleteReagent={deleteReagent} onSelect={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
         {tab === "devices" && <DeviceUsage />}
         {tab === "detail" && selectedGroup && (
           <DetailView
@@ -534,7 +554,7 @@ function GaugeBar({ pct, color }) {
   );
 }
 
-function Dashboard({ groups, counts, departments, role, onDeleteReagent, onSelect }) {
+function Dashboard({ groups, allNames, counts, departments, role, onDeleteReagent, onSelect }) {
   const [deptFilter, setDeptFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
 
@@ -563,7 +583,7 @@ function Dashboard({ groups, counts, departments, role, onDeleteReagent, onSelec
         <SearchableSelect
           value={itemFilter}
           onChange={setItemFilter}
-          options={[...new Set(groups.map((g) => g.name))]}
+          options={allNames || []}
           placeholder="Reagent, lot number, or device…"
           style={{ flex: 1, minWidth: 200 }}
         />

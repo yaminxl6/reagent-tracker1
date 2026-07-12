@@ -62,9 +62,13 @@ function DeviceDetail({ deviceName, reagents, logs, onBack }) {
   const deviceLogs = useMemo(() => logs.filter((l) => lotIds.has(l.reagent_id) && !l.deleted), [logs, lotIds]);
 
   // By reagent name, grouped installation history: each new lot = a "reagent change" event.
+  // Lots expired more than 30 days ago are hidden here (but still count
+  // toward Reports elsewhere) — usage-average stats above are unaffected
+  // since they're computed from the full, unfiltered lot/log set.
   const byName = useMemo(() => {
     const map = {};
-    lots.forEach((l) => {
+    const today = todayISO();
+    lots.filter((l) => Math.round((new Date(l.expiry_date) - new Date(today)) / 86400000) >= -30).forEach((l) => {
       if (!map[l.name]) map[l.name] = [];
       map[l.name].push(l);
     });

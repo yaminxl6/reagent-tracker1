@@ -24,8 +24,11 @@ export default function Home({ counts, groups, reagents, logs, devices, username
   const [chartMonth, setChartMonth] = useState(today.slice(0, 7));
 
   const lowStockLots = useMemo(
-    () => (reagents || []).filter((r) => !r.deleted && r.current_quantity <= r.low_stock_threshold).sort((a, b) => a.current_quantity - b.current_quantity),
-    [reagents]
+    () => (reagents || [])
+      .filter((r) => !r.deleted && r.current_quantity <= r.low_stock_threshold)
+      .filter((r) => daysBetween(r.expiry_date, today) >= -30)
+      .sort((a, b) => a.current_quantity - b.current_quantity),
+    [reagents, today]
   );
 
   const expiringSoon = useMemo(
