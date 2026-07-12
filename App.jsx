@@ -402,7 +402,7 @@ export default function App() {
           </div>
         )}
 
-        {tab === "home" && <Home counts={counts} onNavigate={setTab} />}
+        {tab === "home" && <Home counts={counts} groups={groups} reagents={reagents} logs={logs} devices={devices} onNavigate={setTab} onSelectGroup={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
         {tab === "stock" && <Dashboard groups={groups} counts={counts} departments={config.departments || []} role={role} onDeleteReagent={deleteReagent} onSelect={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
         {tab === "devices" && <DeviceUsage />}
         {tab === "detail" && selectedGroup && (
