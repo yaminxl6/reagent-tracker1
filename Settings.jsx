@@ -24,6 +24,12 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   const [tnOldItem, setTnOldItem] = useState("");
   const [tnNewItem, setTnNewItem] = useState("");
   const [tnMsg, setTnMsg] = useState("");
+  const [dvItem, setDvItem] = useState("");
+  const [dvOldDevice, setDvOldDevice] = useState("");
+  const [dvNewDevice, setDvNewDevice] = useState("");
+  const [dvFrom, setDvFrom] = useState("");
+  const [dvTo, setDvTo] = useState("");
+  const [dvMsg, setDvMsg] = useState("");
   const [reMsg, setReMsg] = useState("");
   const [delFrom, setDelFrom] = useState("");
   const [delTo, setDelTo] = useState("");
@@ -136,6 +142,28 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     await supabase.from("reagents").update({ name: tnNewItem.trim() }).in("id", matchingItemLots.map((r) => r.id));
     await logActivity?.("settings_change", "config", `Renamed test "${tnOldItem}" → "${tnNewItem.trim()}" on ${matchingItemLots.length} lot(s)${tnFrom || tnTo ? ` (${tnFrom || "…"} to ${tnTo || "…"})` : ""}`);
     setTnMsg(`Renamed ${matchingItemLots.length} lot(s).`);
+    reload();
+  }
+
+  const matchingDeviceLots = (reagents || []).filter((r) =>
+    dvOldDevice && r.device === dvOldDevice &&
+    (!dvItem || r.name === dvItem) &&
+    (!dvFrom || r.date_added >= dvFrom) && (!dvTo || r.date_added <= dvTo)
+  );
+
+  async function performDeviceReassign() {
+    if (!dvOldDevice || !dvNewDevice) {
+      setDvMsg("Pick the current device and the new device first.");
+      return;
+    }
+    if (matchingDeviceLots.length === 0) {
+      setDvMsg("No matching lots found for that device, test, and date range.");
+      return;
+    }
+    if (!confirm(`Move ${matchingDeviceLots.length} lot(s) from "${dvOldDevice}" to "${dvNewDevice}"?`)) return;
+    await supabase.from("reagents").update({ device: dvNewDevice }).in("id", matchingDeviceLots.map((r) => r.id));
+    await logActivity?.("settings_change", "config", `Moved ${matchingDeviceLots.length} lot(s)${dvItem ? ` of "${dvItem}"` : ""} from "${dvOldDevice}" to "${dvNewDevice}"${dvFrom || dvTo ? ` (${dvFrom || "…"} to ${dvTo || "…"})` : ""}`);
+    setDvMsg(`Moved ${matchingDeviceLots.length} lot(s).`);
     reload();
   }
 
@@ -528,6 +556,46 @@ export default function Settings({ config, presets, role, staffAccounts, devices
               <Pencil size={14} /> Rename matching lots
             </button>
             {tnMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{tnMsg}</div>}
+          </div>
+
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 24 }}>MOVE TEST TO ANOTHER DEVICE</div>
+          <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Fix a lot that was logged under the wrong analyzer — e.g. something on Cobas that should be on the Beckman. Optionally narrow it to one specific test and/or date range.</div>
+          <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>Current device
+                <select style={inputStyle} value={dvOldDevice} onChange={(e) => setDvOldDevice(e.target.value)}>
+                  <option value="">Choose…</option>
+                  {allDeviceNames.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </label>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>Move to device
+                <select style={inputStyle} value={dvNewDevice} onChange={(e) => setDvNewDevice(e.target.value)}>
+                  <option value="">Choose…</option>
+                  {allDeviceNames.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </label>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>Test name (optional)
+                <select style={inputStyle} value={dvItem} onChange={(e) => setDvItem(e.target.value)}>
+                  <option value="">All tests</option>
+                  {allItemNames.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>From date
+                <input type="date" style={inputStyle} value={dvFrom} onChange={(e) => setDvFrom(e.target.value)} />
+              </label>
+              <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>To date
+                <input type="date" style={inputStyle} value={dvTo} onChange={(e) => setDvTo(e.target.value)} />
+              </label>
+            </div>
+            <div style={{ fontSize: 12.5, color: "#516361", marginBottom: 10 }}>
+              Matches: <b>{matchingDeviceLots.length}</b> lot(s)
+            </div>
+            <button onClick={performDeviceReassign} style={{ background: "var(--accent-2)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}>
+              <Pencil size={14} /> Move matching lots
+            </button>
+            {dvMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{dvMsg}</div>}
           </div>
         </>
       )}

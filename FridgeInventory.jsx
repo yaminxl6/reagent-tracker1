@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Trash2, Download, Refrigerator, Printer, Save, CheckCircle2, ArrowLeft } from "lucide-react";
+import { Plus, Trash2, Download, Refrigerator, Printer, Save, CheckCircle2, ArrowLeft, Pencil } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import FridgeIcon from "./FridgeIcon";
+import FridgeImport from "./FridgeImport";
 
 const inputStyle = { border: "1px solid #C7D1CE", borderRadius: 6, padding: "6px 8px", fontSize: 13, boxSizing: "border-box" };
 const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
@@ -31,6 +32,13 @@ export default function FridgeInventory({ username, logActivity }) {
     setDeletedIds([]);
   }
   useEffect(() => { loadAll(); }, []);
+
+  async function renameFridge(oldName, newName) {
+    if (!newName || newName === oldName) return;
+    await supabase.from("fridge_inventory").update({ refrigerator_name: newName }).eq("refrigerator_name", oldName);
+    await logActivity?.("settings_change", "config", `Renamed fridge "${oldName}" → "${newName}"`);
+    loadAll();
+  }
 
   const fridgeNames = useMemo(() => [...new Set((all || []).map((r) => r.refrigerator_name))], [all]);
   const itemSuggestions = useMemo(() => [...new Set((all || []).map((r) => r.item_name))], [all]);
@@ -99,6 +107,26 @@ export default function FridgeInventory({ username, logActivity }) {
     setTimeout(() => setSaveMsg(""), 2500);
   }
 
+  async function handleFridgeImport({ month: importMonth, refrigeratorName: importFridge, rows }) {
+    const maxOrder = (all || []).filter((r) => r.month === importMonth && r.refrigerator_name === importFridge).reduce((m, r) => Math.max(m, r.row_order || 0), 0);
+    const toInsert = rows.map((r, i) => ({
+      month: importMonth,
+      refrigerator_name: importFridge,
+      counted_by: countedBy,
+      device_group: r.device_group || "",
+      item_name: r.item_name,
+      lot_number: r.lot_number || "",
+      quantity: r.quantity || "",
+      expiry_date: r.expiry_date || null,
+      row_order: maxOrder + i + 1,
+    }));
+    await supabase.from("fridge_inventory").insert(toInsert);
+    await logActivity?.("fridge_count", "fridge", `${importFridge} — ${importMonth}: imported ${toInsert.length} row(s) from file`);
+    setMonth(importMonth);
+    setRefrigeratorName(importFridge);
+    await loadAll();
+  }
+
   async function exportExcel() {
     const XLSX = await import("xlsx");
     const rows = currentRows.map((r) => ({ Section: r.device_group, Item: r.item_name, Lot: r.lot_number, Quantity: r.quantity, "Expiry date": r.expiry_date || "" }));
@@ -138,7 +166,12 @@ export default function FridgeInventory({ username, logActivity }) {
       </div>
 
       {!refrigeratorName ? (
-        <FridgePicker fridgeNames={fridgeNames} all={all} month={month} onSelect={setRefrigeratorName} />
+        <>
+          <div className="no-print" style={{ marginBottom: 18 }}>
+            <FridgeImport onApply={handleFridgeImport} />
+          </div>
+          <FridgePicker fridgeNames={fridgeNames} all={all} month={month} onSelect={setRefrigeratorName} onRename={renameFridge} />
+        </>
       ) : (
         <div id="fridge-print-area">
           <div style={{ textAlign: "center", marginBottom: 4 }}>
@@ -212,14 +245,14 @@ const thStyle = { border: "1px solid #C7D1CE", padding: "8px 10px", fontSize: 12
 const tdStyle = { border: "1px solid #C7D1CE", padding: "4px 6px" };
 const cellInputStyle = { border: "none", background: "transparent", fontSize: 13, width: "100%", padding: "4px 2px" };
 
-function FridgePicker({ fridgeNames, all, month, onSelect }) {
+function FridgePicker({ fridgeNames, all, month, onSelect, onRename }) {
   const [newName, setNewName] = useState("");
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14, marginBottom: 18 }}>
         {fridgeNames.map((name) => {
           const items = [...new Set((all || []).filter((r) => r.refrigerator_name === name && r.month === month).map((r) => r.item_name).filter(Boolean))];
-          return <FridgeCard key={name} name={name} items={items} onClick={() => onSelect(name)} />;
+          return <FridgeCard key={name} name={name} items={items} onClick={() => onSelect(name)} onRename={(newN) => onRename(name, newN)} />;
         })}
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", maxWidth: 340 }}>
@@ -232,10 +265,20 @@ function FridgePicker({ fridgeNames, all, month, onSelect }) {
 
 // A CSS-drawn fridge: a body with a translucent "glass" window showing small
 // chips for whatever's currently logged inside, and the name on top.
-function FridgeCard({ name, items, onClick }) {
+function FridgeCard({ name, items, onClick, onRename }) {
+  function handleRename(e) {
+    e.stopPropagation();
+    const newName = prompt(`Rename "${name}" to:`, name);
+    if (newName && newName.trim() && newName.trim() !== name) onRename(newName.trim());
+  }
   return (
-    <button onClick={onClick} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "center" }}>
-      <div style={{ width: "100%", aspectRatio: "3/4", background: "linear-gradient(160deg, #EAF0F5 0%, #D5E0E8 100%)", border: "2px solid #B7C3C0", borderRadius: 14, position: "relative", overflow: "hidden", boxShadow: "0 3px 8px rgba(0,0,0,0.08)" }}>
+    <div style={{ textAlign: "center" }}>
+      <div onClick={onClick} style={{ width: "100%", aspectRatio: "3/4", background: "linear-gradient(160deg, #EAF0F5 0%, #D5E0E8 100%)", border: "2px solid #B7C3C0", borderRadius: 14, position: "relative", overflow: "hidden", boxShadow: "0 3px 8px rgba(0,0,0,0.08)", cursor: "pointer" }}>
+        {onRename && (
+          <button onClick={handleRename} title="Rename fridge" style={{ position: "absolute", top: 6, right: 6, zIndex: 2, background: "rgba(255,255,255,0.85)", border: "none", borderRadius: 6, padding: 4, display: "flex" }}>
+            <Pencil size={12} color="#516361" />
+          </button>
+        )}
         <div style={{ position: "absolute", top: "18%", left: 0, right: 0, height: 2, background: "#B7C3C0" }} />
         <div style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", width: 26, height: 5, borderRadius: 3, background: "#9FB0AE" }} />
         <div style={{ position: "absolute", top: "26%", left: "50%", transform: "translateX(-50%)", width: 8, height: 8, borderRadius: 4, background: "#8A9694" }} />
@@ -250,6 +293,6 @@ function FridgeCard({ name, items, onClick }) {
         </div>
       </div>
       <div style={{ fontWeight: 700, fontSize: 13, marginTop: 8 }}>{name}</div>
-    </button>
+    </div>
   );
 }
