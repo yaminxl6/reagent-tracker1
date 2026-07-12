@@ -26,7 +26,7 @@ export default function Login({ config, staffAccounts, onLogin }) {
     }
     const staffMatch = (staffAccounts || []).find((s) => s.username === username && s.password === password);
     if (staffMatch) {
-      onLogin(staffMatch.role || "staff", username);
+      onLogin(staffMatch.role || "staff", staffMatch.display_name || username);
       return;
     }
     setError("Incorrect username or password.");
@@ -41,7 +41,7 @@ export default function Login({ config, staffAccounts, onLogin }) {
             <Beaker size={20} color="#5FBFB0" />
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>Reagent Log</div>
+            <div style={{ fontWeight: 700, fontSize: 16, color: config.app_name_color || "#1B2328" }}>{config.app_name || "Reagent Log"}</div>
             <div style={{ fontSize: 12, color: "#7B8E8A" }}>Rabia Hospital · Lab Inventory</div>
           </div>
         </div>

@@ -379,6 +379,7 @@ export default function App() {
         <Sidebar
           className={sidebarOpen ? "app-sidebar open" : "app-sidebar"}
           tab={tab} setTab={(t) => { setTab(t); setSidebarOpen(false); }} role={role}
+          appName={config.app_name} appNameColor={config.app_name_color}
           onAdd={() => { setShowWizard(true); setSidebarOpen(false); }}
           onImport={() => { setShowImport(true); setSidebarOpen(false); }}
           onLog={() => { setShowLog(true); setSidebarOpen(false); }}
@@ -388,7 +389,7 @@ export default function App() {
         <div className="app-main-col">
           <div className="mobile-topbar no-print" style={{ background: "#fff", borderBottom: "1px solid #EDEFF2", padding: "12px 16px", alignItems: "center", gap: 10 }}>
             <button onClick={() => setSidebarOpen(true)} style={{ background: "transparent", border: "1px solid #E1E5EA", color: "#3B4450", borderRadius: 7, padding: "7px 9px", display: "flex" }}><MenuIcon size={16} /></button>
-            <div style={{ color: "#1B2328", fontWeight: 700, fontSize: 15 }}>Reagent Log</div>
+            <div style={{ color: config.app_name_color || "#1B2328", fontWeight: 700, fontSize: 15 }}>{config.app_name || "Reagent Log"}</div>
           </div>
 
       <main style={{ maxWidth: 980, margin: "0 auto", padding: "24px 20px 80px" }}>
@@ -443,7 +444,7 @@ export default function App() {
   );
 }
 
-function Sidebar({ className, tab, setTab, role, onAdd, onImport, onLog, onLogout, onEnableNotif }) {
+function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, onImport, onLog, onLogout, onEnableNotif }) {
   const isAdmin = ["admin","super","owner"].includes(role);
   const isSuper = ["super","owner"].includes(role);
   return (
@@ -453,7 +454,7 @@ function Sidebar({ className, tab, setTab, role, onAdd, onImport, onLog, onLogou
           <Beaker size={19} color="var(--accent-1)" />
         </div>
         <div>
-          <div style={{ color: "#1B2328", fontWeight: 700, fontSize: 15.5, letterSpacing: 0.1 }}>Reagent Log</div>
+          <div style={{ color: appNameColor || "#1B2328", fontWeight: 700, fontSize: 15.5, letterSpacing: 0.1 }}>{appName || "Reagent Log"}</div>
           <div style={{ color: "#8A93A0", fontSize: 11 }}>Rabia Hospital</div>
         </div>
       </div>

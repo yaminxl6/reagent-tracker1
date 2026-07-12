@@ -42,7 +42,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   const [newPreset, setNewPreset] = useState({ name: "", department: departments[0] || "", unit: "mL" });
   const [newDept, setNewDept] = useState("");
   const [newDevice, setNewDevice] = useState({ name: "", department: departments[0] || "" });
-  const [newStaff, setNewStaff] = useState({ username: "", password: "" });
+  const [newStaff, setNewStaff] = useState({ username: "", password: "", display_name: "" });
   const [staffMsg, setStaffMsg] = useState("");
   const [showPasswords, setShowPasswords] = useState(false);
   const [creds, setCreds] = useState({
@@ -56,6 +56,8 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     owner_password: config.owner_password,
     low_stock_default_percent: config.low_stock_default_percent,
     expiry_warning_days: config.expiry_warning_days ?? 30,
+    app_name: config.app_name || "Reagent Log",
+    app_name_color: config.app_name_color || "#1B2328",
   });
   const [theme, setTheme] = useState(config.theme_colors || { accent1: "#2F6FED", accent2: "#0EA5A5", headerStart: "#2F6FED", headerEnd: "#0EA5A5" });
   const [themeMsg, setThemeMsg] = useState("");
@@ -186,11 +188,11 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   }
 
   async function addStaffAccount() {
-    if (!newStaff.username || !newStaff.password) return;
+    if (!newStaff.username || !newStaff.password || !newStaff.display_name) return;
     const { error } = await supabase.from("staff_accounts").insert(newStaff);
     setStaffMsg(error ? "That username may already exist." : "Account created.");
-    if (!error) await logActivity?.("staff_add", "staff", newStaff.username);
-    setNewStaff({ username: "", password: "" });
+    if (!error) await logActivity?.("staff_add", "staff", `${newStaff.display_name} (${newStaff.username})`);
+    setNewStaff({ username: "", password: "", display_name: "" });
     reload();
     setTimeout(() => setStaffMsg(""), 2500);
   }
@@ -380,18 +382,24 @@ export default function Settings({ config, presets, role, staffAccounts, devices
         <Section title="Employee Accounts" open={!!openSections.employees} onToggle={() => toggleSection("employees")}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3 }}>EMPLOYEE ACCOUNTS</div>
           <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>
-            Create a personal login for each employee. {role === "owner" ? "As Owner, you can also grant any employee a higher role below." : "They get regular staff permissions (no delete, no settings)."}
+            Create a personal login for each employee. The username/password can be their employee number — what shows up on receiving records and usage logs is always their real name below, never the login itself. {role === "owner" ? "As Owner, you can also grant any employee a higher role below." : "They get regular staff permissions (no delete, no settings)."}
           </div>
           <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 14, marginBottom: 16 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <input
-                placeholder="Username"
+                placeholder="Real name (shown on records)"
+                value={newStaff.display_name}
+                onChange={(e) => setNewStaff((s) => ({ ...s, display_name: e.target.value }))}
+                style={{ ...inputStyle, flex: 2, minWidth: 180, marginTop: 0 }}
+              />
+              <input
+                placeholder="Username (e.g. employee number)"
                 value={newStaff.username}
                 onChange={(e) => setNewStaff((s) => ({ ...s, username: e.target.value }))}
                 style={{ ...inputStyle, flex: 1, minWidth: 140, marginTop: 0 }}
               />
               <input
-                placeholder="Password"
+                placeholder="Password (e.g. employee number)"
                 type={showPasswords ? "text" : "password"}
                 value={newStaff.password}
                 onChange={(e) => setNewStaff((s) => ({ ...s, password: e.target.value }))}
@@ -407,7 +415,10 @@ export default function Settings({ config, presets, role, staffAccounts, devices
             {(staffAccounts || []).length === 0 && <div style={{ fontSize: 13, color: "#8A9694" }}>No individual employee accounts yet — everyone shares the "Staff username/password" below.</div>}
             {(staffAccounts || []).map((s) => (
               <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, padding: "9px 14px" }}>
-                <div style={{ flex: 1, fontWeight: 600, fontSize: 13.5 }}>{s.username}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>{s.display_name || s.username}</div>
+                  <div style={{ fontSize: 11, color: "#8A9694" }}>login: {s.username}</div>
+                </div>
                 {role === "owner" ? (
                   <select value={s.role || "staff"} onChange={(e) => updateStaffRole(s.id, s.username, e.target.value)} style={{ ...inputStyle, width: 110, marginTop: 0 }}>
                     <option value="staff">Staff</option>
@@ -456,6 +467,14 @@ export default function Settings({ config, presets, role, staffAccounts, devices
         <label style={labelStyle}>"Expiring soon" warning window (days before expiry)
           <input type="number" style={inputStyle} value={creds.expiry_warning_days} onChange={(e) => setCreds((c) => ({ ...c, expiry_warning_days: Number(e.target.value) }))} />
         </label>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+          <label style={{ ...labelStyle, flex: 1 }}>App name (shown in sidebar & login screen)
+            <input style={inputStyle} value={creds.app_name} onChange={(e) => setCreds((c) => ({ ...c, app_name: e.target.value }))} />
+          </label>
+          <label style={labelStyle}>Name color
+            <input type="color" value={creds.app_name_color} onChange={(e) => setCreds((c) => ({ ...c, app_name_color: e.target.value }))} style={{ width: 44, height: 38, border: "1px solid #C7D1CE", borderRadius: 7, padding: 0, marginTop: 4 }} />
+          </label>
+        </div>
         <button onClick={saveCreds} style={{ background: "#0F7173", color: "#fff", border: "none", borderRadius: 8, padding: "11px", fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <Save size={14} /> Save settings
         </button>
