@@ -23,7 +23,10 @@ function deptColor(dept, list) {
 const INSPECTION_KEYS = ["intact_container", "complete_compound", "expiration_validity", "lot_matches_kit", "storage_condition_ok"];
 const ENTITY_LABELS = { reagent: "Reagent lot", log: "Usage log", config: "Settings", preset: "Preset", device: "Device", staff: "Employee account", department: "Department", fridge: "Fridge/equipment count" };
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
 const daysBetween = (a, b) => Math.round((new Date(a) - new Date(b)) / 86400000);
 const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString() : "");
 
@@ -313,7 +316,7 @@ export default function App() {
   // never deleted — it always stays fully visible in Reports.
   const ARCHIVE_GRACE_DAYS = 30;
   function isArchivedLot(r) {
-    return daysBetween(r.expiry_date, todayISO()) < -ARCHIVE_GRACE_DAYS;
+    return daysBetween(r.expiry_date, todayISO()) <= -ARCHIVE_GRACE_DAYS;
   }
   const activeGroups = useMemo(() => {
     return groups

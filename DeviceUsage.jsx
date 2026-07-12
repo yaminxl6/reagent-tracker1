@@ -2,7 +2,10 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Cpu, ArrowLeft } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
 const daysBetween = (a, b) => Math.round((new Date(a) - new Date(b)) / 86400000);
 
 export default function DeviceUsage() {
@@ -68,7 +71,7 @@ function DeviceDetail({ deviceName, reagents, logs, onBack }) {
   const byName = useMemo(() => {
     const map = {};
     const today = todayISO();
-    lots.filter((l) => Math.round((new Date(l.expiry_date) - new Date(today)) / 86400000) >= -30).forEach((l) => {
+    lots.filter((l) => Math.round((new Date(l.expiry_date) - new Date(today)) / 86400000) > -30).forEach((l) => {
       if (!map[l.name]) map[l.name] = [];
       map[l.name].push(l);
     });

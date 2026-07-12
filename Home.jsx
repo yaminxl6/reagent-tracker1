@@ -2,7 +2,10 @@ import React, { useMemo, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import { LayoutGrid, Refrigerator, Cpu, ChevronRight, AlertTriangle, Clock, Monitor, TrendingDown, TrendingUp, Bell, FlaskConical } from "lucide-react";
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
 const daysBetween = (a, b) => Math.round((new Date(a) - new Date(b)) / 86400000);
 const fmtToday = () => new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
 
@@ -26,14 +29,19 @@ export default function Home({ counts, groups, reagents, logs, devices, username
   const lowStockLots = useMemo(
     () => (reagents || [])
       .filter((r) => !r.deleted && r.current_quantity <= r.low_stock_threshold)
-      .filter((r) => daysBetween(r.expiry_date, today) >= -30)
+      .filter((r) => daysBetween(r.expiry_date, today) > -30)
       .sort((a, b) => a.current_quantity - b.current_quantity),
     [reagents, today]
   );
 
+  const [expirySort, setExpirySort] = useState("soonest");
   const expiringSoon = useMemo(
-    () => (groups || []).filter((g) => g.fefo && daysBetween(g.fefo.expiry_date, today) <= 90).sort((a, b) => new Date(a.fefo.expiry_date) - new Date(b.fefo.expiry_date)),
-    [groups, today]
+    () => (groups || [])
+      .filter((g) => g.fefo && daysBetween(g.fefo.expiry_date, today) <= 90)
+      .sort((a, b) => expirySort === "soonest"
+        ? new Date(a.fefo.expiry_date) - new Date(b.fefo.expiry_date)
+        : new Date(b.fefo.expiry_date) - new Date(a.fefo.expiry_date)),
+    [groups, today, expirySort]
   );
 
   const recentUsage = useMemo(() => {
@@ -154,9 +162,15 @@ export default function Home({ counts, groups, reagents, logs, devices, username
       {/* Row 2 — Expiring Soon table + Usage Analytics chart */}
       <div className="dash-animate" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 24, marginBottom: 32 }}>
         <div className="dash-card" style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 10, flexWrap: "wrap" }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>Expiring Soon</div>
-            <button onClick={() => onNavigate("stock")} style={{ background: "none", border: "none", color: "var(--accent-1)", fontSize: 13, fontWeight: 600 }}>View all</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <select value={expirySort} onChange={(e) => setExpirySort(e.target.value)} style={{ border: "1px solid #E5E7EB", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "#374151", fontWeight: 500 }}>
+                <option value="soonest">Soonest first</option>
+                <option value="latest">Latest first</option>
+              </select>
+              <button onClick={() => onNavigate("stock")} style={{ background: "none", border: "none", color: "var(--accent-1)", fontSize: 13, fontWeight: 600 }}>View all</button>
+            </div>
           </div>
           {expiringSoon.length === 0 ? (
             <div style={{ fontSize: 13, color: "#9CA3AF", padding: "16px 0" }}>Nothing expiring within 90 days.</div>

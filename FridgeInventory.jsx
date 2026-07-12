@@ -46,10 +46,11 @@ export default function FridgeInventory({ username, logActivity }) {
   const itemCountFor = (name) => (all || []).filter((r) => r.refrigerator_name === name && r.month === month && r.item_name).length;
 
   const currentRows = (all || []).filter((r) => r.month === month && r.refrigerator_name === refrigeratorName);
-  const today = new Date().toISOString().slice(0, 10);
+  const _now = new Date();
+  const today = new Date(_now.getTime() - _now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   function isArchivedRow(r) {
     if (!r.expiry_date) return false;
-    return Math.round((new Date(r.expiry_date) - new Date(today)) / 86400000) < -30;
+    return Math.round((new Date(r.expiry_date) - new Date(today)) / 86400000) <= -30;
   }
   const groups = useMemo(() => {
     const map = {};
