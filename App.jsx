@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Beaker, TrendingDown, Plus, Users, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock } from "lucide-react";
+import { Beaker, TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, Package } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Login from "./Login";
 import Settings from "./Settings";
@@ -11,6 +11,9 @@ import FridgeInventory from "./FridgeInventory";
 import SearchableSelect from "./SearchableSelect";
 import Home from "./Home";
 import DeviceUsage from "./DeviceUsage";
+import Batches from "./Batches";
+import Suppliers from "./Suppliers";
+import Users from "./Users";
 
 const DEPT_PALETTE = ["#0F7173", "#B5473A", "#8A5A2B", "#5A6ACF", "#2F8F5B", "#B8860B", "#7A4FA3", "#C1432B"];
 function deptColor(dept, list) {
@@ -51,6 +54,7 @@ export default function App() {
   const [presets, setPresets] = useState([]);
   const [staffAccounts, setStaffAccounts] = useState([]);
   const [devices, setDevices] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [activityLog, setActivityLog] = useState([]);
   const [tab, setTab] = useState("home");
   const [showWizard, setShowWizard] = useState(false);
@@ -74,42 +78,54 @@ export default function App() {
   }
 
   async function fetchAll(table, orderCol, ascending = true) {
-    let all = [];
-    let from = 0;
     const pageSize = 1000;
-    while (true) {
-      let query = supabase.from(table).select("*").range(from, from + pageSize - 1);
-      if (orderCol) query = query.order(orderCol, { ascending });
-      const { data, error } = await query;
-      if (error) throw error;
-      all = all.concat(data || []);
-      if (!data || data.length < pageSize) break;
-      from += pageSize;
-    }
-    return all;
+    // Find out how many rows there are first, then fetch every page in
+    // parallel instead of one-at-a-time — much faster for large tables.
+    const { count, error: countErr } = await supabase.from(table).select("*", { count: "exact", head: true });
+    if (countErr) throw countErr;
+    const total = count || 0;
+    if (total === 0) return [];
+    const pageStarts = [];
+    for (let from = 0; from < total; from += pageSize) pageStarts.push(from);
+    const pages = await Promise.all(
+      pageStarts.map(async (from) => {
+        let query = supabase.from(table).select("*").range(from, from + pageSize - 1);
+        if (orderCol) query = query.order(orderCol, { ascending });
+        const { data, error } = await query;
+        if (error) throw error;
+        return data || [];
+      })
+    );
+    return pages.flat();
   }
 
   async function loadAll() {
     let r, l;
     try {
-      r = await fetchAll("reagents", "expiry_date");
-      l = await fetchAll("consumption_logs");
+      [r, l] = await Promise.all([
+        fetchAll("reagents", "expiry_date"),
+        fetchAll("consumption_logs"),
+      ]);
     } catch (err) {
       setError("Could not connect to the database. Check Supabase settings.");
       setReagents([]);
       setLogs([]);
       return;
     }
-    const { data: p } = await supabase.from("reagent_presets").select("*").order("name");
-    const { data: s } = await supabase.from("staff_accounts").select("*").order("username");
-    const { data: a } = await supabase.from("audit_log").select("*").order("performed_at", { ascending: false });
-    const { data: dv } = await supabase.from("devices").select("*").order("name");
+    const [{ data: p }, { data: s }, { data: a }, { data: dv }, supRes] = await Promise.all([
+      supabase.from("reagent_presets").select("*").order("name"),
+      supabase.from("staff_accounts").select("*").order("username"),
+      supabase.from("audit_log").select("*").order("performed_at", { ascending: false }),
+      supabase.from("devices").select("*").order("name"),
+      supabase.from("suppliers").select("*").order("name"),
+    ]);
     setReagents(r || []);
     setLogs(l || []);
     setPresets(p || []);
     setStaffAccounts(s || []);
     setActivityLog(a || []);
     setDevices(dv || []);
+    setSuppliers(supRes?.data || []);
   }
 
   async function logActivity(action, entity, description) {
@@ -430,6 +446,9 @@ export default function App() {
         {tab === "home" && <Home counts={counts} groups={activeGroups} reagents={reagents} logs={logs} devices={devices} username={username} role={role} onNavigate={setTab} onSelectGroup={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
         {tab === "stock" && <Dashboard groups={activeGroups} allNames={[...new Set(groups.map((g) => g.name))]} counts={counts} departments={config.departments || []} role={role} onDeleteReagent={deleteReagent} onSelect={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
         {tab === "devices" && <DeviceUsage />}
+        {tab === "batches" && <Batches reagents={reagents} departments={config.departments || []} />}
+        {tab === "suppliers" && (["admin","super","owner"].includes(role)) && <Suppliers suppliers={suppliers} reload={loadAll} logActivity={logActivity} canEdit={["admin","super","owner"].includes(role)} />}
+        {tab === "users" && (["admin","super","owner"].includes(role)) && <Users staffAccounts={staffAccounts} role={role} logActivity={logActivity} reload={loadAll} />}
         {tab === "detail" && selectedGroup && (
           <DetailView
             group={groups.find((g) => g.name === selectedGroup.name) || selectedGroup}
@@ -484,6 +503,7 @@ function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, o
 
         <SideGroupLabel>Inventory</SideGroupLabel>
         <SideBtn active={tab === "stock" || tab === "detail"} onClick={() => setTab("stock")} icon={<LayoutGrid size={16} />} label="Stock" />
+        <SideBtn active={tab === "batches"} onClick={() => setTab("batches")} icon={<Package size={16} />} label="Batches" />
         <SideBtn active={tab === "fridges"} onClick={() => setTab("fridges")} icon={<Refrigerator size={16} />} label="Fridges" />
         <SideBtn active={tab === "devices"} onClick={() => setTab("devices")} icon={<Cpu size={16} />} label="Devices" />
 
@@ -495,6 +515,8 @@ function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, o
         {isAdmin && (
           <>
             <SideGroupLabel>Management</SideGroupLabel>
+            <SideBtn active={tab === "suppliers"} onClick={() => setTab("suppliers")} icon={<Truck size={16} />} label="Suppliers" />
+            <SideBtn active={tab === "users"} onClick={() => setTab("users")} icon={<UsersIcon size={16} />} label="Users" />
             <SideBtn active={tab === "settings"} onClick={() => setTab("settings")} icon={<SlidersHorizontal size={16} />} label="Settings" />
           </>
         )}
@@ -717,7 +739,7 @@ function DetailView({ group, logs, role, expiryWarningDays, onBack, onEditReagen
           <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13, padding: "8px 0", borderBottom: "1px solid #EEF2F0" }}>
             <div style={{ width: 90, color: "#8A9694", fontFamily: "'IBM Plex Mono', monospace" }}>{l.date}</div>
             <div style={{ flex: 1 }}>−{l.amount} {group.unit}</div>
-            <div style={{ color: "#7B8E8A", display: "flex", alignItems: "center", gap: 4 }}><Users size={12} /> {l.used_by}</div>
+            <div style={{ color: "#7B8E8A", display: "flex", alignItems: "center", gap: 4 }}><UsersIcon size={12} /> {l.used_by}</div>
             <div style={{ fontSize: 11, color: l.tested_by_qc ? "#2F6B4F" : "#8A9694", fontWeight: 600 }}>{l.tested_by_qc ? "QC ✓" : "QC —"}</div>
             <button onClick={() => onEditLog(l)} style={{ background: "none", border: "none", color: "#8A9694" }}><Pencil size={13} /></button>
             {(["admin","super","owner"].includes(role)) && <button onClick={() => onDeleteLog(l)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={13} /></button>}
