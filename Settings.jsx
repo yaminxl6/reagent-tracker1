@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Trash2, Plus, Save, Eye, EyeOff, Pencil } from "lucide-react";
+import { Trash2, Plus, Save, Eye, EyeOff, Pencil, ChevronDown } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 const THEME_PRESETS = [
@@ -13,6 +13,8 @@ const THEME_PRESETS = [
 ];
 
 export default function Settings({ config, presets, role, staffAccounts, devices, reagents, logs, logActivity, reload }) {
+  const [openSections, setOpenSections] = useState({});
+  const toggleSection = (key) => setOpenSections((s) => ({ ...s, [key]: !s[key] }));
   const [delDevice, setDelDevice] = useState("");
   const [delItem, setDelItem] = useState("");
   const [reFrom, setReFrom] = useState("");
@@ -245,8 +247,9 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   return (
     <div>
       <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Settings</h2>
-      <div style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 24 }}>Only visible to your admin account.</div>
+      <div style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 20 }}>Tap a section below to expand it.</div>
 
+      <Section title="Departments" open={!!openSections.departments} onToggle={() => toggleSection("departments")}>
       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3 }}>DEPARTMENTS</div>
       <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 14, marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 8 }}>
@@ -269,12 +272,10 @@ export default function Settings({ config, presets, role, staffAccounts, devices
           </div>
         ))}
       </div>
+      </Section>
 
-      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3 }}>REAGENT PRESET LIST</div>
-      <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>
-        This is the list staff pick from at the "Details" step when receiving stock.
-      </div>
-
+      <Section title="Reagent Presets" open={!!openSections.presets} onToggle={() => toggleSection("presets")}>
+        <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>This is the list staff pick from at the "Details" step when receiving stock — grouped by department, then by device. Tap a department to see its tests.</div>
       <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 14, marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input
@@ -301,18 +302,42 @@ export default function Settings({ config, presets, role, staffAccounts, devices
           </button>
         </div>
       </div>
+      {presets.length === 0 ? (
+        <div style={{ fontSize: 13, color: "#8A9694", marginBottom: 20 }}>No presets yet — add your first reagent name above.</div>
+      ) : (
+        <div style={{ marginBottom: 20 }}>
+          {departments.filter((d) => presets.some((p) => p.department === d)).map((dept) => {
+            const deptPresets = presets.filter((p) => p.department === dept);
+            const deviceGroups = {};
+            deptPresets.forEach((p) => {
+              const key = p.device || "General";
+              if (!deviceGroups[key]) deviceGroups[key] = [];
+              deviceGroups[key].push(p);
+            });
+            return (
+              <Section key={dept} title={`${dept} (${deptPresets.length})`} open={!!openSections[`preset_${dept}`]} onToggle={() => toggleSection(`preset_${dept}`)} nested>
+                {Object.entries(deviceGroups).map(([device, items]) => (
+                  <div key={device} style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: "#8A9694", textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 6 }}>{device}</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {items.map((p) => (
+                        <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, padding: "9px 14px" }}>
+                          <div style={{ flex: 1, fontWeight: 600, fontSize: 13.5 }}>{p.name}</div>
+                          <div style={{ fontSize: 12.5, color: "#7B8E8A" }}>{p.unit}</div>
+                          <button onClick={() => deletePreset(p.id, p.name)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={15} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </Section>
+            );
+          })}
+        </div>
+      )}
+      </Section>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 30 }}>
-        {presets.length === 0 && <div style={{ fontSize: 13, color: "#8A9694" }}>No presets yet — add your first reagent name above.</div>}
-        {presets.map((p) => (
-          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, padding: "9px 14px" }}>
-            <div style={{ flex: 1, fontWeight: 600, fontSize: 13.5 }}>{p.name}</div>
-            <div style={{ fontSize: 12.5, color: "#7B8E8A" }}>{p.department} · {p.unit}</div>
-            <button onClick={() => deletePreset(p.id, p.name)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={15} /></button>
-          </div>
-        ))}
-      </div>
-
+      <Section title="Devices / Analyzers" open={!!openSections.devices} onToggle={() => toggleSection("devices")}>
       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3 }}>DEVICES / ANALYZERS</div>
       <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>
         Each device belongs to a department. Staff only see devices matching the department they picked when receiving stock.
@@ -347,9 +372,10 @@ export default function Settings({ config, presets, role, staffAccounts, devices
           </div>
         ))}
       </div>
+      </Section>
 
       {["super","owner"].includes(role) && (
-        <>
+        <Section title="Employee Accounts" open={!!openSections.employees} onToggle={() => toggleSection("employees")}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3 }}>EMPLOYEE ACCOUNTS</div>
           <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>
             Create a personal login for each employee. {role === "owner" ? "As Owner, you can also grant any employee a higher role below." : "They get regular staff permissions (no delete, no settings)."}
@@ -393,9 +419,10 @@ export default function Settings({ config, presets, role, staffAccounts, devices
               </div>
             ))}
           </div>
-        </>
+        </Section>
       )}
 
+      <Section title="Login & Defaults" open={!!openSections.login} onToggle={() => toggleSection("login")}>
       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3 }}>LOGIN & DEFAULTS</div>
       <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", gap: 10 }}>
@@ -432,7 +459,9 @@ export default function Settings({ config, presets, role, staffAccounts, devices
         </button>
         {msg && <div style={{ fontSize: 12.5, color: "#2F6B4F" }}>{msg}</div>}
       </div>
+      </Section>
 
+      <Section title="Theme Colors" open={!!openSections.theme} onToggle={() => toggleSection("theme")}>
       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 30 }}>THEME COLORS</div>
       <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Pick a ready-made combination, or fine-tune your own below.</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
@@ -464,13 +493,14 @@ export default function Settings({ config, presets, role, staffAccounts, devices
         </button>
         {themeMsg && <div style={{ fontSize: 12.5, color: "#2F6B4F" }}>{themeMsg}</div>}
       </div>
-
       <div style={{ fontSize: 11.5, color: "#8A9694", marginTop: 14 }}>
         Note: these credentials are stored as plain text in the database, and the database's anon key is visible in the browser — fine for internal use, not for sensitive data. Individual employee accounts (above) help with accountability, but full access control would need Supabase Auth, which is a bigger change than adjusting these settings.
       </div>
+      </Section>
 
       {["super","owner"].includes(role) && (
-        <>
+        <Section title="Data Tools & Corrections" open={!!openSections.datatools} onToggle={() => toggleSection("datatools")}>
+          <Section title="Bulk delete test data" open={!!openSections.dt_delete} onToggle={() => toggleSection("dt_delete")} nested>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 30 }}>DATA TOOLS</div>
           <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Bulk-delete reagent lots and usage logs — useful for clearing out test data. Filter by device, test/item name, and/or date range, review the count, then confirm.</div>
           <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16 }}>
@@ -499,7 +529,8 @@ export default function Settings({ config, presets, role, staffAccounts, devices
             </button>
             {delMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{delMsg}</div>}
           </div>
-
+          </Section>
+          <Section title="Reassign employee" open={!!openSections.dt_reassign} onToggle={() => toggleSection("dt_reassign")} nested>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 24 }}>REASSIGN EMPLOYEE</div>
           <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Fix a wrong name on past records without deleting anything — e.g. something was logged under the wrong employee for a period. Renames both "received by" and "used by" entries that match.</div>
           <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16 }}>
@@ -528,7 +559,8 @@ export default function Settings({ config, presets, role, staffAccounts, devices
             </button>
             {reMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{reMsg}</div>}
           </div>
-
+          </Section>
+          <Section title="Rename test / item" open={!!openSections.dt_rename} onToggle={() => toggleSection("dt_rename")} nested>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 24 }}>RENAME TEST / ITEM</div>
           <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Fix a wrong test name on past lots without deleting anything — pick the current name, the date range it was used under, and what it should actually be.</div>
           <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16 }}>
@@ -557,7 +589,8 @@ export default function Settings({ config, presets, role, staffAccounts, devices
             </button>
             {tnMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{tnMsg}</div>}
           </div>
-
+          </Section>
+          <Section title="Move test to another device" open={!!openSections.dt_move} onToggle={() => toggleSection("dt_move")} nested>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 24 }}>MOVE TEST TO ANOTHER DEVICE</div>
           <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Fix a lot that was logged under the wrong analyzer — e.g. something on Cobas that should be on the Beckman. Optionally narrow it to one specific test and/or date range.</div>
           <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16 }}>
@@ -597,11 +630,13 @@ export default function Settings({ config, presets, role, staffAccounts, devices
             </button>
             {dvMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{dvMsg}</div>}
           </div>
-        </>
+          </Section>
+        </Section>
       )}
     </div>
   );
 }
+
 
 const inputStyle = { width: "100%", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 11px", fontSize: 14, marginTop: 4, boxSizing: "border-box" };
 const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
@@ -615,5 +650,27 @@ function ColorField({ label, value, onChange }) {
         <input value={value} onChange={(e) => onChange(e.target.value)} style={{ ...inputStyle, width: 90, marginTop: 0, fontFamily: "monospace", fontSize: 12.5 }} />
       </div>
     </label>
+  );
+}
+
+// Collapsible section — tap the header to expand/collapse. `nested` gives
+// a slightly smaller, indented style for sections placed inside another
+// section (e.g. the individual Data Tools inside "Data Tools & Corrections").
+function Section({ title, open, onToggle, nested, children }) {
+  return (
+    <div style={{ marginBottom: nested ? 12 : 20, border: "1px solid #E1E8E5", borderRadius: 10, background: nested ? "#FAFBFB" : "#fff", overflow: "hidden" }}>
+      <button
+        onClick={onToggle}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: "none", border: "none", padding: nested ? "10px 14px" : "13px 16px",
+          fontWeight: 700, fontSize: nested ? 13 : 14, letterSpacing: 0.2, textAlign: "left", cursor: "pointer",
+        }}
+      >
+        {title}
+        <ChevronDown size={16} color="#8A9694" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s", flexShrink: 0 }} />
+      </button>
+      {open && <div style={{ padding: nested ? "0 14px 14px" : "0 16px 16px" }}>{children}</div>}
+    </div>
   );
 }
