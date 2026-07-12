@@ -9,6 +9,7 @@ const THEME_PRESETS = [
   { name: "Plum",       colors: { accent1: "#7A4FA3", accent2: "#B5473A", headerStart: "#2B1B3A", headerEnd: "#1B2B2E" } },
   { name: "Amber Slate",colors: { accent1: "#D8862B", accent2: "#3E6ACF", headerStart: "#2A2420", headerEnd: "#1B2B2E" } },
   { name: "Rose Gold",  colors: { accent1: "#B5473A", accent2: "#D8862B", headerStart: "#3A1F1B", headerEnd: "#1B2B2E" } },
+  { name: "Sunset",     colors: { accent1: "#E8722C", accent2: "#D94F70", headerStart: "#4A1F2E", headerEnd: "#2A1420" } },
 ];
 
 export default function Settings({ config, presets, role, staffAccounts, devices, reagents, logs, logActivity, reload }) {

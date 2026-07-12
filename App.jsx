@@ -707,6 +707,7 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
         Reagent: r.name,
         Department: r.department,
         Type: r.item_type,
+        Device: r.device || "",
         "Lot Number": r.lot_number,
         "Received By": r.added_by,
         "Received Date": r.date_added,
@@ -784,7 +785,7 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
                     <button onClick={() => onPurgeReagent(r.id)} className="no-print" style={{ background: "none", border: "1px solid #C1432B", color: "#C1432B", borderRadius: 6, padding: "3px 9px", fontSize: 10.5, fontWeight: 700 }}>Erase permanently</button>
                   )}
                 </div>
-                <div style={{ fontSize: 11.5, color: "#7B8E8A", fontFamily: "'IBM Plex Mono', monospace" }}>{r.department} · {r.item_type} · Lot {r.lot_number}</div>
+                <div style={{ fontSize: 11.5, color: "#7B8E8A", fontFamily: "'IBM Plex Mono', monospace" }}>{r.department} · {r.item_type} · Lot {r.lot_number}{r.device ? ` · ${r.device}` : ""}</div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 12, fontSize: 12.5 }}>
