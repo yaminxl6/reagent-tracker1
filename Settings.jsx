@@ -227,12 +227,24 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     const byPresetFridge = {};
     (presets || []).forEach((p) => { if (p.default_fridge_name) byPresetFridge[p.name] = p.default_fridge_name; });
     const toUpdate = (reagents || []).filter((r) => !r.fridge_name && (byPresetFridge[r.name] || byDeviceFridge[r.device]));
+    if (toUpdate.length === 0) {
+      setFridgeApplyMsg("Nothing to update — either every lot already has a fridge, or no device/item above has a default fridge set yet that matches an existing lot's device/name.");
+      return;
+    }
+    let okCount = 0;
+    let firstError = "";
     for (const r of toUpdate) {
       const fridge = byPresetFridge[r.name] || byDeviceFridge[r.device];
-      await supabase.from("reagents").update({ fridge_name: fridge }).eq("id", r.id);
+      const { error } = await supabase.from("reagents").update({ fridge_name: fridge }).eq("id", r.id);
+      if (error) { if (!firstError) firstError = error.message; }
+      else okCount++;
     }
-    await logActivity?.("settings_change", "config", `Auto-assigned a fridge to ${toUpdate.length} existing lot(s) based on device/item defaults`);
-    setFridgeApplyMsg(`Done — updated ${toUpdate.length} lot(s) that had no fridge set.`);
+    await logActivity?.("settings_change", "config", `Auto-assigned a fridge to ${okCount} existing lot(s) based on device/item defaults`);
+    setFridgeApplyMsg(
+      firstError
+        ? `Updated ${okCount} of ${toUpdate.length} — stopped on error: ${firstError}. This usually means the SQL script hasn't been run yet (fridge_name column missing).`
+        : `Done — updated ${okCount} of ${toUpdate.length} eligible lot(s).`
+    );
     reload();
   }
 

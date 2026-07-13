@@ -20,6 +20,7 @@ create table if not exists fridge_temperature_logs (
 create index if not exists idx_fridge_temp_name_date on fridge_temperature_logs(fridge_name, date);
 
 alter table fridge_temperature_logs enable row level security;
+drop policy if exists "allow all fridge_temperature_logs" on fridge_temperature_logs;
 create policy "allow all fridge_temperature_logs" on fridge_temperature_logs for all using (true) with check (true);
 
 -- 3) Auto-routing: each device (and/or each ready-made item preset) can carry

@@ -199,13 +199,21 @@ export default function App() {
   }
 
   async function bulkReceive(rows) {
+    // Same auto-routing rule as the Receive wizard: if the imported row
+    // doesn't already specify a fridge, fall back to the item preset's or
+    // the device's default fridge.
+    const byPresetFridge = {};
+    (presets || []).forEach((p) => { if (p.default_fridge_name) byPresetFridge[p.name] = p.default_fridge_name; });
+    const byDeviceFridge = {};
+    (devices || []).forEach((d) => { if (d.default_fridge_name) byDeviceFridge[d.name] = d.default_fridge_name; });
     for (const entry of rows) {
+      const fridgeName = entry.fridgeName || byPresetFridge[entry.name] || byDeviceFridge[entry.device] || "";
       await supabase.from("reagents").insert({
         name: entry.name,
         department: entry.department,
         item_type: entry.itemType || "Reagent",
         device: entry.device || "",
-        fridge_name: entry.fridgeName || "",
+        fridge_name: fridgeName,
         lot_number: entry.lotNumber,
         unit: entry.unit || "unit",
         quantity_received: Number(entry.quantityReceived),
