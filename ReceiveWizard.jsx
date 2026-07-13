@@ -15,12 +15,12 @@ const INSPECTION_ITEMS = [
 const inputStyle = { width: "100%", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 11px", fontSize: 14, marginTop: 4, boxSizing: "border-box" };
 const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
 
-export default function ReceiveWizard({ presets, devices, role, departments, onClose, onSubmit }) {
+export default function ReceiveWizard({ presets, devices, fridgeNames, role, departments, onClose, onSubmit }) {
   const [step, setStep] = useState(1);
   const [showScanner, setShowScanner] = useState(false);
 
   const [form, setForm] = useState({
-    name: "", department: departments[0] || "", unit: "mL", itemType: "Reagent", device: "",
+    name: "", department: departments[0] || "", unit: "mL", itemType: "Reagent", device: "", fridgeName: "",
     lotNumber: "", quantityReceived: "", expiryDate: "",
     receivedBy: "", receivedDate: new Date().toISOString().slice(0, 10),
     lowStockThreshold: "",
@@ -32,13 +32,47 @@ export default function ReceiveWizard({ presets, devices, role, departments, onC
     receivingNotes: "",
     inspectionNotes: "",
   });
+  // Once you touch the Fridge field yourself, auto-routing stops overriding it.
+  const [fridgeTouched, setFridgeTouched] = useState(false);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  // Item preset takes priority over device for the auto-picked fridge
+  // (e.g. an ABO reagent preset always routes to R0008 no matter the device).
+  function autoFridgeFor(nextForm) {
+    const p = presets.find((x) => x.name === nextForm.name);
+    if (p?.default_fridge_name) return p.default_fridge_name;
+    const d = (devices || []).find((x) => x.name === nextForm.device);
+    if (d?.default_fridge_name) return d.default_fridge_name;
+    return null;
+  }
+
   function handleNameChange(value) {
     const p = presets.find((x) => x.name === value);
-    if (p) setForm((f) => ({ ...f, name: p.name, department: p.department, unit: p.unit }));
-    else setForm((f) => ({ ...f, name: value }));
+    setForm((f) => {
+      const next = p ? { ...f, name: p.name, department: p.department, unit: p.unit } : { ...f, name: value };
+      if (!fridgeTouched) {
+        const auto = autoFridgeFor(next);
+        if (auto) next.fridgeName = auto;
+      }
+      return next;
+    });
+  }
+
+  function handleDeviceChange(value) {
+    setForm((f) => {
+      const next = { ...f, device: value };
+      if (!fridgeTouched) {
+        const auto = autoFridgeFor(next);
+        if (auto) next.fridgeName = auto;
+      }
+      return next;
+    });
+  }
+
+  function handleFridgeChange(value) {
+    setFridgeTouched(true);
+    setForm((f) => ({ ...f, fridgeName: value }));
   }
 
   function toggle(key, value) {
@@ -85,9 +119,18 @@ export default function ReceiveWizard({ presets, devices, role, departments, onC
             <label style={labelStyle}>Device / analyzer (optional — click to browse, or type to search)
               <SearchableSelect
                 value={form.device}
-                onChange={(v) => setForm((f) => ({ ...f, device: v }))}
+                onChange={handleDeviceChange}
                 options={devicesForDept.map((d) => d.name)}
                 placeholder="e.g. Cobas c311"
+                style={{ marginTop: 4 }}
+              />
+            </label>
+            <label style={labelStyle}>Fridge / storage location {fridgeTouched ? "" : "(auto-picked from item/device — tap to override)"}
+              <SearchableSelect
+                value={form.fridgeName}
+                onChange={handleFridgeChange}
+                options={fridgeNames || []}
+                placeholder="e.g. R0008, or Room Temperature"
                 style={{ marginTop: 4 }}
               />
             </label>

@@ -17,6 +17,11 @@ import Users from "./Users";
 import OrderPlan from "./OrderPlan";
 
 const DEPT_PALETTE = ["#0F7173", "#B5473A", "#8A5A2B", "#5A6ACF", "#2F8F5B", "#B8860B", "#7A4FA3", "#C1432B"];
+// Your lab's fridges, always offered on Receive even before any data exists
+// for them. "Room Temperature" is a pseudo-fridge for stock that doesn't
+// need refrigeration (kept in the regular storeroom instead).
+const BASE_FRIDGES = ["R011", "R014", "R009", "R01", "Lab0202", "R012", "R0008"];
+const ROOM_TEMP = "Room Temperature (Warehouse)";
 function deptColor(dept, list) {
   const i = Math.max(0, list.indexOf(dept));
   return DEPT_PALETTE[i % DEPT_PALETTE.length];
@@ -59,6 +64,8 @@ export default function App() {
   const [staffAccounts, setStaffAccounts] = useState([]);
   const [devices, setDevices] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [fridgeNames, setFridgeNames] = useState([]);
+  const [fridgeTempLogs, setFridgeTempLogs] = useState([]);
   const [activityLog, setActivityLog] = useState([]);
   const [tab, setTab] = useState("home");
   const [showWizard, setShowWizard] = useState(false);
@@ -116,12 +123,14 @@ export default function App() {
       setLogs([]);
       return;
     }
-    const [{ data: p }, { data: s }, { data: a }, { data: dv }, supRes] = await Promise.all([
+    const [{ data: p }, { data: s }, { data: a }, { data: dv }, supRes, fridgeRes, tempRes] = await Promise.all([
       supabase.from("reagent_presets").select("*").order("name"),
       supabase.from("staff_accounts").select("*").order("username"),
       supabase.from("audit_log").select("*").order("performed_at", { ascending: false }),
       supabase.from("devices").select("*").order("name"),
       supabase.from("suppliers").select("*").order("name"),
+      supabase.from("fridge_inventory").select("refrigerator_name"),
+      supabase.from("fridge_temperature_logs").select("*").order("date", { ascending: false }),
     ]);
     setReagents(r || []);
     setLogs(l || []);
@@ -130,6 +139,11 @@ export default function App() {
     setActivityLog(a || []);
     setDevices(dv || []);
     setSuppliers(supRes?.data || []);
+    const namesFromFridgeSheet = (fridgeRes?.data || []).map((f) => f.refrigerator_name);
+    const namesFromReagents = (r || []).map((x) => x.fridge_name).filter(Boolean);
+    const allNames = [...new Set([...BASE_FRIDGES, ...namesFromFridgeSheet, ...namesFromReagents])].sort();
+    setFridgeNames([ROOM_TEMP, ...allNames]);
+    setFridgeTempLogs(tempRes?.data || []);
   }
 
   async function logActivity(action, entity, description) {
@@ -162,6 +176,7 @@ export default function App() {
       department: entry.department,
       item_type: entry.itemType,
       device: entry.device || "",
+      fridge_name: entry.fridgeName || "",
       lot_number: entry.lotNumber,
       unit: entry.unit,
       quantity_received: entry.quantityReceived,
@@ -190,6 +205,7 @@ export default function App() {
         department: entry.department,
         item_type: entry.itemType || "Reagent",
         device: entry.device || "",
+        fridge_name: entry.fridgeName || "",
         lot_number: entry.lotNumber,
         unit: entry.unit || "unit",
         quantity_received: Number(entry.quantityReceived),
@@ -465,8 +481,8 @@ export default function App() {
             onEditLog={setEditLog} onDeleteLog={deleteLog}
           />
         )}
-        {tab === "reports" && <Reports reagents={reagents} logs={logs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
-        {tab === "settings" && (["admin","super","owner"].includes(role)) && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} reagents={reagents} logs={logs} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
+        {tab === "reports" && <Reports reagents={reagents} logs={logs} fridgeTempLogs={fridgeTempLogs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
+        {tab === "settings" && (["admin","super","owner"].includes(role)) && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} fridgeNames={fridgeNames} reagents={reagents} logs={logs} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
         {tab === "fridges" && <FridgeInventory username={username} logActivity={logActivity} />}
         {tab === "charts" && (["admin","super","owner"].includes(role)) && <Charts reagents={reagents} logs={logs} />}
         {tab === "deletions" && ["super","owner"].includes(role) && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}
@@ -474,7 +490,7 @@ export default function App() {
         </div>
       </div>
 
-      {showWizard && <ReceiveWizard presets={presets} devices={devices} role={role} departments={config.departments || []} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
+      {showWizard && <ReceiveWizard presets={presets} devices={devices} fridgeNames={fridgeNames} role={role} departments={config.departments || []} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
       {showImport && (
         <Modal title="Bulk import reagents" onClose={() => setShowImport(false)}>
           <ReagentImport departments={config.departments || []} onApply={bulkReceive} />
@@ -644,7 +660,7 @@ function Dashboard({ groups, allNames, counts, departments, role, onDeleteReagen
                       {g.flagged && <ClipboardX size={13} color="#B8860B" title="Inspection issue on receipt" />}
                     </div>
                     <div style={{ fontSize: 12.5, color: "#7B8E8A", fontFamily: "'IBM Plex Mono', monospace", marginTop: 2 }}>
-                      Lot {g.fefo.lot_number} · {g.fefo.current_quantity} {g.unit} left · {g.items.length > 1 ? `${g.items.length} lots` : "1 lot"}{g.fefo.device ? ` · ${g.fefo.device}` : ""}
+                      Lot {g.fefo.lot_number} · {g.fefo.current_quantity} {g.unit} left · {g.items.length > 1 ? `${g.items.length} lots` : "1 lot"}{g.fefo.device ? ` · ${g.fefo.device}` : ""}{g.fefo.fridge_name ? ` · ${g.fefo.fridge_name}` : ""}
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
@@ -769,11 +785,29 @@ function firstOfMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
-function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog }) {
+function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeReagent, onPurgeLog }) {
   const [dateFrom, setDateFrom] = useState(firstOfMonth());
   const [dateTo, setDateTo] = useState(todayISO());
   const [searchLot, setSearchLot] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
+
+  // Most recent temperature reading logged for a fridge on/before a given date
+  // (falls back to the most recent reading overall if none exist before it).
+  function tempFor(fridgeName, onOrBefore) {
+    if (!fridgeName) return null;
+    const readings = (fridgeTempLogs || []).filter((t) => t.fridge_name === fridgeName);
+    if (readings.length === 0) return null;
+    const before = readings.filter((t) => t.date <= onOrBefore).sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+    return before || readings.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+  }
+  // Full disposition of an expired lot, for the report badge.
+  function expiredDisposition(r) {
+    if (r.expiry_date >= todayISO()) return null;
+    const usedFraction = r.quantity_received > 0 ? (r.quantity_received - r.current_quantity) / r.quantity_received : 0;
+    if (usedFraction >= 0.95 || r.current_quantity <= 0) return { label: "Expired — fully used", color: "#2F6B4F", bg: "#E8F2EC" };
+    if (usedFraction < 0.05) return { label: "⚠ Expired unused — disposed of (waste)", color: "#8A2E1F", bg: "#FBEAE6" };
+    return { label: "Expired — partially used, remainder disposed", color: "#B8860B", bg: "#FBF3DF" };
+  }
 
   const matchedLots = useMemo(() => {
     const term = searchLot.trim().toLowerCase();
@@ -793,11 +827,14 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
     const rows = [];
     matchedLots.forEach((r) => {
       const rLogs = logsFor(r.id);
+      const temp = tempFor(r.fridge_name, r.date_added);
       const base = {
         Reagent: r.name,
         Department: r.department,
         Type: r.item_type,
         Device: r.device || "",
+        Fridge: r.fridge_name || "",
+        "Fridge Temp (°C)": temp ? temp.temperature : "",
         "Lot Number": r.lot_number,
         "Received By": r.added_by,
         "Received Date": r.date_added,
@@ -812,6 +849,7 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
         "Storage Condition": r.storage_condition_ok ? "Yes" : "No",
         "Receiving Note": r.receiving_notes || "",
         "Inspection Note": r.inspection_notes || "",
+        "Expired Disposition": expiredDisposition(r)?.label.replace("⚠ ", "") || "",
       };
       if (rLogs.length === 0) {
         rows.push({ ...base, "Consumption Date": "", "Amount Used": "", "Used By": "", "Tested by QC": "" });
@@ -865,6 +903,8 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
         {matchedLots.map((r) => {
           const rLogs = logsFor(r.id);
           const failedItems = Object.keys(INSPECTION_REPORT_LABELS).filter((k) => r[k] === false);
+          const temp = tempFor(r.fridge_name, r.date_added);
+          const disposition = expiredDisposition(r);
           return (
             <div key={r.id} style={{ background: "#fff", border: r.deleted ? "1px solid #C1432B55" : "1px solid #E1E8E5", borderRadius: 10, padding: 16, opacity: r.deleted ? 0.75 : 1 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
@@ -874,8 +914,11 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
                   {r.deleted && ["super","owner"].includes(role) && (
                     <button onClick={() => onPurgeReagent(r.id)} className="no-print" style={{ background: "none", border: "1px solid #C1432B", color: "#C1432B", borderRadius: 6, padding: "3px 9px", fontSize: 10.5, fontWeight: 700 }}>Erase permanently</button>
                   )}
+                  {disposition && <span style={{ fontSize: 10, fontWeight: 700, color: disposition.color, background: disposition.bg, padding: "2px 7px", borderRadius: 4 }}>{disposition.label}</span>}
                 </div>
-                <div style={{ fontSize: 11.5, color: "#7B8E8A", fontFamily: "'IBM Plex Mono', monospace" }}>{r.department} · {r.item_type} · Lot {r.lot_number}{r.device ? ` · ${r.device}` : ""}</div>
+                <div style={{ fontSize: 11.5, color: "#7B8E8A", fontFamily: "'IBM Plex Mono', monospace" }}>
+                  {r.department} · {r.item_type} · Lot {r.lot_number}{r.device ? ` · ${r.device}` : ""}{r.fridge_name ? ` · ${r.fridge_name}` : ""}{temp ? ` · ${temp.temperature}°C (${temp.date})` : ""}
+                </div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 12, fontSize: 12.5 }}>
@@ -883,6 +926,9 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
                 <div><div style={{ color: "#8A9694", fontSize: 10.5, textTransform: "uppercase" }}>Received date</div>{r.date_added}</div>
                 <div><div style={{ color: "#8A9694", fontSize: 10.5, textTransform: "uppercase" }}>Expiry date</div>{r.expiry_date}</div>
                 <div><div style={{ color: "#8A9694", fontSize: 10.5, textTransform: "uppercase" }}>Quantity</div>{r.current_quantity}/{r.quantity_received} {r.unit}</div>
+                {r.fridge_name && (
+                  <div><div style={{ color: "#8A9694", fontSize: 10.5, textTransform: "uppercase" }}>Fridge</div>{r.fridge_name}{temp ? ` (${temp.temperature}°C)` : ""}</div>
+                )}
               </div>
 
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>

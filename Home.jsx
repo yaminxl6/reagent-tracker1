@@ -86,6 +86,9 @@ export default function Home({ counts, groups, reagents, logs, devices, username
   );
 
   const [expirySort, setExpirySort] = useState("soonest");
+  // Uses the same 30-day-auto-archived group list as Stock/Fridges/Devices:
+  // an expired lot shows here for up to 30 days after expiry, then drops off
+  // the dashboard automatically (it always stays visible in Reports).
   const expired = useMemo(
     () => (groups || [])
       .filter((g) => g.fefo && daysBetween(g.fefo.expiry_date, today) < 0)

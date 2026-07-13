@@ -7,6 +7,10 @@ import FridgeImport from "./FridgeImport";
 const inputStyle = { border: "1px solid #C7D1CE", borderRadius: 6, padding: "6px 8px", fontSize: 13, boxSizing: "border-box" };
 const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
 const todayMonth = () => new Date().toISOString().slice(0, 7);
+const todayISO = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
 
 function displayMonth(monthISO) {
   const [y, m] = monthISO.split("-");
@@ -24,6 +28,7 @@ export default function FridgeInventory({ username, logActivity }) {
   const [dirty, setDirty] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [deletedIds, setDeletedIds] = useState([]);
+  const [tempLogs, setTempLogs] = useState([]);
 
   async function loadAll() {
     const { data } = await supabase.from("fridge_inventory").select("*").order("row_order");
@@ -31,13 +36,21 @@ export default function FridgeInventory({ username, logActivity }) {
     setDirty(false);
     setDeletedIds([]);
   }
-  useEffect(() => { loadAll(); }, []);
+  async function loadTemps() {
+    const { data } = await supabase.from("fridge_temperature_logs").select("*").order("date", { ascending: false });
+    setTempLogs(data || []);
+  }
+  useEffect(() => { loadAll(); loadTemps(); }, []);
 
   async function renameFridge(oldName, newName) {
     if (!newName || newName === oldName) return;
     await supabase.from("fridge_inventory").update({ refrigerator_name: newName }).eq("refrigerator_name", oldName);
+    // Keep reagent lots and temperature history linked to the fridge in sync.
+    await supabase.from("reagents").update({ fridge_name: newName }).eq("fridge_name", oldName);
+    await supabase.from("fridge_temperature_logs").update({ fridge_name: newName }).eq("fridge_name", oldName);
     await logActivity?.("settings_change", "config", `Renamed fridge "${oldName}" → "${newName}"`);
     loadAll();
+    loadTemps();
   }
 
   const fridgeNames = useMemo(() => [...new Set((all || []).map((r) => r.refrigerator_name))], [all]);
@@ -186,6 +199,17 @@ export default function FridgeInventory({ username, logActivity }) {
           </div>
           <div style={{ fontSize: 14, fontWeight: 600, margin: "14px 0 8px" }}>Refrigerator: {refrigeratorName}</div>
 
+          <TemperatureLog
+            fridgeName={refrigeratorName}
+            logs={tempLogs.filter((t) => t.fridge_name === refrigeratorName)}
+            username={username}
+            onAdded={async (row) => {
+              await supabase.from("fridge_temperature_logs").insert(row);
+              await logActivity?.("fridge_count", "fridge", `${refrigeratorName} — temperature logged: ${row.temperature}°C on ${row.date}`);
+              await loadTemps();
+            }}
+          />
+
           <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #C7D1CE" }}>
             <thead>
               <tr>
@@ -246,6 +270,79 @@ export default function FridgeInventory({ username, logActivity }) {
     </div>
   );
 }
+
+// Standard lab fridges run 2–8°C; R014 holds items that need freezing
+// (per your note), so it's checked against a freezer range instead.
+const FREEZER_FRIDGES = ["R014"];
+function tempRangeFor(fridgeName) {
+  return FREEZER_FRIDGES.includes(fridgeName) ? { min: -20, max: -18, label: "-20 to -18°C" } : { min: 2, max: 8, label: "2 to 8°C" };
+}
+
+function TemperatureLog({ fridgeName, logs, username, onAdded }) {
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState(todayISO());
+  const [temperature, setTemperature] = useState("");
+  const range = tempRangeFor(fridgeName);
+
+  async function submit() {
+    if (!temperature) return;
+    await onAdded({ fridge_name: fridgeName, date, temperature: Number(temperature), recorded_by: username || "" });
+    setTemperature("");
+  }
+
+  const sorted = [...logs].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const latest = sorted[0];
+  const latestOutOfRange = latest && (latest.temperature < range.min || latest.temperature > range.max);
+
+  return (
+    <div className="no-print" style={{ border: "1px solid #E1E8E5", borderRadius: 8, padding: "10px 12px", marginBottom: 14, background: "#F7F9F8" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>
+          Temperature {latest ? <>— last reading <b style={{ color: latestOutOfRange ? "#C1432B" : "inherit" }}>{latest.temperature}°C</b> on {latest.date} {latestOutOfRange && <span style={{ color: "#C1432B", fontWeight: 700 }}>⚠ out of range ({range.label})</span>}</> : <span style={{ color: "#8A9694", fontWeight: 500 }}>— no readings yet · normal range {range.label}</span>}
+        </div>
+        <button onClick={() => setOpen((o) => !o)} style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 600 }}>
+          {open ? "Hide history" : `History (${logs.length})`}
+        </button>
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginTop: 10, flexWrap: "wrap" }}>
+        <label style={labelStyle}>Date<input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} /></label>
+        <label style={labelStyle}>Temp (°C)<input type="number" step="0.1" style={{ ...inputStyle, width: 90 }} value={temperature} onChange={(e) => setTemperature(e.target.value)} /></label>
+        <button onClick={submit} style={{ background: "var(--accent-1)", color: "#fff", border: "none", borderRadius: 7, padding: "8px 14px", fontSize: 13, fontWeight: 700 }}>+ Log reading</button>
+      </div>
+      {open && (
+        <div style={{ marginTop: 10, maxHeight: 220, overflowY: "auto" }}>
+          {sorted.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: "#8A9694" }}>No temperature history for this fridge yet.</div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ ...thStyleSmall }}>Date</th>
+                  <th style={{ ...thStyleSmall }}>Temp (°C)</th>
+                  <th style={{ ...thStyleSmall }}>Recorded by</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((t) => {
+                  const outOfRange = t.temperature < range.min || t.temperature > range.max;
+                  return (
+                    <tr key={t.id}>
+                      <td style={tdStyleSmall}>{t.date}</td>
+                      <td style={{ ...tdStyleSmall, color: outOfRange ? "#C1432B" : "inherit", fontWeight: outOfRange ? 700 : 400 }}>{t.temperature}{outOfRange ? " ⚠" : ""}</td>
+                      <td style={tdStyleSmall}>{t.recorded_by || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+const thStyleSmall = { textAlign: "left", fontSize: 11.5, color: "#7B8E8A", padding: "4px 6px", borderBottom: "1px solid #E1E8E5" };
+const tdStyleSmall = { fontSize: 12.5, padding: "4px 6px", borderBottom: "1px solid #EEF2F0" };
 
 const thStyle = { border: "1px solid #C7D1CE", padding: "8px 10px", fontSize: 12.5, fontWeight: 700, background: "#F0F3F2", textAlign: "left" };
 const tdStyle = { border: "1px solid #C7D1CE", padding: "4px 6px" };

@@ -14,7 +14,7 @@ const THEME_PRESETS = [
   { name: "Clean Blue", colors: { accent1: "#2F6FED", accent2: "#0EA5A5", headerStart: "#2F6FED", headerEnd: "#0EA5A5" } },
 ];
 
-export default function Settings({ config, presets, role, staffAccounts, devices, reagents, logs, logActivity, reload }) {
+export default function Settings({ config, presets, role, staffAccounts, devices, fridgeNames, reagents, logs, logActivity, reload }) {
   const [openSections, setOpenSections] = useState({});
   const toggleSection = (key) => setOpenSections((s) => ({ ...s, [key]: !s[key] }));
   const [delDevice, setDelDevice] = useState("");
@@ -34,6 +34,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   const [dvFrom, setDvFrom] = useState("");
   const [dvTo, setDvTo] = useState("");
   const [dvMsg, setDvMsg] = useState("");
+  const [fridgeApplyMsg, setFridgeApplyMsg] = useState("");
   const [reMsg, setReMsg] = useState("");
   const [delFrom, setDelFrom] = useState("");
   const [delTo, setDelTo] = useState("");
@@ -41,7 +42,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   const departments = config.departments || [];
   const [newPreset, setNewPreset] = useState({ name: "", department: departments[0] || "", unit: "mL" });
   const [newDept, setNewDept] = useState("");
-  const [newDevice, setNewDevice] = useState({ name: "", department: departments[0] || "" });
+  const [newDevice, setNewDevice] = useState({ name: "", department: departments[0] || "", default_fridge_name: "" });
   const [newStaff, setNewStaff] = useState({ username: "", password: "", display_name: "" });
   const [staffMsg, setStaffMsg] = useState("");
   const [showPasswords, setShowPasswords] = useState(false);
@@ -177,7 +178,32 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     if (!newDevice.name) return;
     await supabase.from("devices").insert(newDevice);
     await logActivity?.("device_add", "device", `${newDevice.name} (${newDevice.department})`);
-    setNewDevice({ name: "", department: departments[0] || "" });
+    setNewDevice({ name: "", department: departments[0] || "", default_fridge_name: "" });
+    reload();
+  }
+
+  async function updateDeviceFridge(id, name, fridgeName) {
+    await supabase.from("devices").update({ default_fridge_name: fridgeName }).eq("id", id);
+    await logActivity?.("settings_change", "config", `${name} — default fridge set to "${fridgeName || "(none)"}"`);
+    reload();
+  }
+
+  // Retroactively links every existing lot (2023 → today, whatever's already
+  // in the database) that has no fridge yet to the default fridge of its
+  // device or item preset — the same rule used for new receiving. Run this
+  // again any time after adjusting the default-fridge mappings below.
+  async function applyDefaultFridges() {
+    const byDeviceFridge = {};
+    (devices || []).forEach((d) => { if (d.default_fridge_name) byDeviceFridge[d.name] = d.default_fridge_name; });
+    const byPresetFridge = {};
+    (presets || []).forEach((p) => { if (p.default_fridge_name) byPresetFridge[p.name] = p.default_fridge_name; });
+    const toUpdate = (reagents || []).filter((r) => !r.fridge_name && (byPresetFridge[r.name] || byDeviceFridge[r.device]));
+    for (const r of toUpdate) {
+      const fridge = byPresetFridge[r.name] || byDeviceFridge[r.device];
+      await supabase.from("reagents").update({ fridge_name: fridge }).eq("id", r.id);
+    }
+    await logActivity?.("settings_change", "config", `Auto-assigned a fridge to ${toUpdate.length} existing lot(s) based on device/item defaults`);
+    setFridgeApplyMsg(`Done — updated ${toUpdate.length} lot(s) that had no fridge set.`);
     reload();
   }
 
@@ -361,10 +387,26 @@ export default function Settings({ config, presets, role, staffAccounts, devices
           >
             {departments.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
+          <select
+            value={newDevice.default_fridge_name}
+            onChange={(e) => setNewDevice((d) => ({ ...d, default_fridge_name: e.target.value }))}
+            style={{ ...inputStyle, flex: 1, minWidth: 140, marginTop: 0 }}
+          >
+            <option value="">No default fridge</option>
+            {(fridgeNames || []).map((f) => <option key={f} value={f}>{f}</option>)}
+          </select>
           <button onClick={addDevice} style={{ background: "#0F7173", color: "#fff", border: "none", borderRadius: 7, padding: "0 14px", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
             <Plus size={14} /> Add
           </button>
         </div>
+      </div>
+      <div style={{ fontSize: 11.5, color: "#8A9694", marginBottom: 10 }}>Default fridge auto-fills the Fridge field on Receive when this device is picked — staff can still change it per lot.</div>
+      <div style={{ background: "#F7F9F8", border: "1px solid #E1E8E5", borderRadius: 8, padding: 12, marginBottom: 16, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 200, fontSize: 12.5, color: "#516361" }}>
+          Set the default fridge on each device above, then run this once to link every <b>existing</b> lot that has no fridge yet — useful for backfilling your 2023 → today data.
+        </div>
+        <button onClick={applyDefaultFridges} style={{ background: "#0F7173", color: "#fff", border: "none", borderRadius: 7, padding: "8px 14px", fontSize: 12.5, fontWeight: 700 }}>Apply defaults to existing lots</button>
+        {fridgeApplyMsg && <div style={{ fontSize: 12, color: "#2F6B4F", fontWeight: 600 }}>{fridgeApplyMsg}</div>}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 30 }}>
         {(devices || []).length === 0 && <div style={{ fontSize: 13, color: "#8A9694" }}>No devices yet — add your lab's analyzers above.</div>}
@@ -372,6 +414,14 @@ export default function Settings({ config, presets, role, staffAccounts, devices
           <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, padding: "9px 14px" }}>
             <div style={{ flex: 1, fontWeight: 600, fontSize: 13.5 }}>{d.name}</div>
             <div style={{ fontSize: 12.5, color: "#7B8E8A" }}>{d.department}</div>
+            <select
+              value={d.default_fridge_name || ""}
+              onChange={(e) => updateDeviceFridge(d.id, d.name, e.target.value)}
+              style={{ border: "1px solid #C7D1CE", borderRadius: 6, padding: "5px 8px", fontSize: 12.5 }}
+            >
+              <option value="">No default fridge</option>
+              {(fridgeNames || []).map((f) => <option key={f} value={f}>{f}</option>)}
+            </select>
             <button onClick={() => deleteDevice(d.id, d.name)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={15} /></button>
           </div>
         ))}

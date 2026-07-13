@@ -49,7 +49,10 @@ export default function DeviceUsage() {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14 }}>
           {deviceNames.map((name) => {
-            const lots = reagents.filter((r) => r.device === name && !r.deleted);
+            // Only lots that still have quantity left count as "currently on
+            // the device" — once a lot is fully used up it disappears from
+            // here automatically (it still shows, marked Finished, in history).
+            const lots = reagents.filter((r) => r.device === name && !r.deleted && r.current_quantity > 0);
             const itemNames = [...new Set(lots.map((l) => l.name))];
             return <DeviceCard key={name} name={name} items={itemNames} count={lots.length} onClick={() => setSelected(name)} />;
           })}
@@ -110,7 +113,9 @@ function DeviceDetail({ deviceName, reagents, logs, onBack }) {
                   <div style={{ width: 100, color: "#8A9694", fontFamily: "'IBM Plex Mono', monospace" }}>{it.date_added}</div>
                   <div style={{ flex: 1, fontFamily: "'IBM Plex Mono', monospace" }}>Lot {it.lot_number}</div>
                   <div>{it.current_quantity}/{it.quantity_received} {it.unit}</div>
-                  <div style={{ color: it.deleted ? "#C1432B" : "#2F6B4F", fontSize: 11.5, fontWeight: 700 }}>{it.deleted ? "removed" : "active"}</div>
+                  <div style={{ color: it.deleted ? "#C1432B" : it.current_quantity <= 0 ? "#8A9694" : "#2F6B4F", fontSize: 11.5, fontWeight: 700 }}>
+                    {it.deleted ? "removed" : it.current_quantity <= 0 ? "finished" : "active"}
+                  </div>
                 </div>
               ))}
             </div>
