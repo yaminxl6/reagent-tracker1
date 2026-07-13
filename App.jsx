@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Beaker, TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, Package } from "lucide-react";
+import { Beaker, TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, Package, ClipboardList } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Login from "./Login";
 import Settings from "./Settings";
@@ -14,6 +14,7 @@ import DeviceUsage from "./DeviceUsage";
 import Batches from "./Batches";
 import Suppliers from "./Suppliers";
 import Users from "./Users";
+import OrderPlan from "./OrderPlan";
 
 const DEPT_PALETTE = ["#0F7173", "#B5473A", "#8A5A2B", "#5A6ACF", "#2F8F5B", "#B8860B", "#7A4FA3", "#C1432B"];
 function deptColor(dept, list) {
@@ -449,6 +450,7 @@ export default function App() {
         {tab === "home" && <Home counts={counts} groups={activeGroups} reagents={reagents} logs={logs} devices={devices} username={username} role={role} onNavigate={setTab} onSelectGroup={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
         {tab === "stock" && <Dashboard groups={activeGroups} allNames={[...new Set(groups.map((g) => g.name))]} counts={counts} departments={config.departments || []} role={role} onDeleteReagent={deleteReagent} onSelect={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
         {tab === "devices" && <DeviceUsage />}
+        {tab === "orderplan" && <OrderPlan reagents={reagents} devices={devices} logActivity={logActivity} />}
         {tab === "batches" && <Batches reagents={reagents} departments={config.departments || []} />}
         {tab === "suppliers" && (["admin","super","owner"].includes(role)) && <Suppliers suppliers={suppliers} reload={loadAll} logActivity={logActivity} canEdit={["admin","super","owner"].includes(role)} />}
         {tab === "users" && (["admin","super","owner"].includes(role)) && <Users staffAccounts={staffAccounts} role={role} logActivity={logActivity} reload={loadAll} />}
@@ -509,6 +511,7 @@ function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, o
         <SideBtn active={tab === "batches"} onClick={() => setTab("batches")} icon={<Package size={16} />} label="Batches" />
         <SideBtn active={tab === "fridges"} onClick={() => setTab("fridges")} icon={<Refrigerator size={16} />} label="Fridges" />
         <SideBtn active={tab === "devices"} onClick={() => setTab("devices")} icon={<Cpu size={16} />} label="Devices" />
+        <SideBtn active={tab === "orderplan"} onClick={() => setTab("orderplan")} icon={<ClipboardList size={16} />} label="Order Plan" />
 
         <SideGroupLabel>Tracking</SideGroupLabel>
         <SideBtn active={tab === "reports"} onClick={() => setTab("reports")} icon={<FileText size={16} />} label="Reports" />
