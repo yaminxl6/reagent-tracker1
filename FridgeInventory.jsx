@@ -7,6 +7,9 @@ import FridgeImport from "./FridgeImport";
 const inputStyle = { border: "1px solid #C7D1CE", borderRadius: 6, padding: "6px 8px", fontSize: 13, boxSizing: "border-box" };
 const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
 const todayMonth = () => new Date().toISOString().slice(0, 7);
+// Your lab's fridges — always shown as cards here, even before any stock
+// count or temperature reading has been entered for them yet.
+const BASE_FRIDGES = ["R011", "R014", "R009", "R01", "Lab0202", "R012", "R0008"];
 const todayISO = () => {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -53,7 +56,7 @@ export default function FridgeInventory({ username, logActivity }) {
     loadTemps();
   }
 
-  const fridgeNames = useMemo(() => [...new Set((all || []).map((r) => r.refrigerator_name))], [all]);
+  const fridgeNames = useMemo(() => [...new Set([...BASE_FRIDGES, ...(all || []).map((r) => r.refrigerator_name)])].sort(), [all]);
   const itemSuggestions = useMemo(() => [...new Set((all || []).map((r) => r.item_name))], [all]);
   const deviceSuggestions = useMemo(() => [...new Set((all || []).map((r) => r.device_group).filter(Boolean))], [all]);
   const itemCountFor = (name) => (all || []).filter((r) => r.refrigerator_name === name && r.month === month && r.item_name).length;
