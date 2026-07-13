@@ -813,7 +813,12 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
     const term = searchLot.trim().toLowerCase();
     return reagents
       .filter((r) => !r.deleted)
-      .filter((r) => (term ? r.lot_number.toLowerCase().includes(term) : r.date_added >= dateFrom && r.date_added <= dateTo))
+      .filter((r) => (term
+        ? (r.lot_number || "").toLowerCase().includes(term)
+          || (r.name || "").toLowerCase().includes(term)
+          || (r.device || "").toLowerCase().includes(term)
+          || (r.fridge_name || "").toLowerCase().includes(term)
+        : r.date_added >= dateFrom && r.date_added <= dateTo))
       .filter((r) => (deptFilter ? r.department === deptFilter : true))
       .sort((a, b) => new Date(b.date_added) - new Date(a.date_added));
   }, [reagents, searchLot, dateFrom, dateTo, deptFilter]);
@@ -883,7 +888,7 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
           <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={{ border: "1px solid #C7D1CE", borderRadius: 6, padding: "7px 10px", fontSize: 13 }} />
         </div>
         <input
-          placeholder="Search by lot number…"
+          placeholder="Search by test name, device, fridge, or lot number…"
           value={searchLot}
           onChange={(e) => setSearchLot(e.target.value)}
           style={{ border: "1px solid #C7D1CE", borderRadius: 6, padding: "7px 10px", fontSize: 13, flex: 1, minWidth: 180 }}
@@ -893,7 +898,7 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
           {departments.map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
       </div>
-      {searchLot.trim() && <div style={{ fontSize: 12, color: "#8A9694", marginBottom: 10 }}>Searching by lot number — date filter is ignored while searching.</div>}
+      {searchLot.trim() && <div style={{ fontSize: 12, color: "#8A9694", marginBottom: 10 }}>Searching — date filter is ignored while searching.</div>}
 
       {matchedLots.length === 0 && (
         <div style={{ textAlign: "center", padding: "60px 20px", color: "#8A9694", fontSize: 13.5 }}>No records match this filter.</div>

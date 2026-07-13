@@ -35,6 +35,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   const [dvTo, setDvTo] = useState("");
   const [dvMsg, setDvMsg] = useState("");
   const [fridgeApplyMsg, setFridgeApplyMsg] = useState("");
+  const [wasteMsg, setWasteMsg] = useState("");
   const [reMsg, setReMsg] = useState("");
   const [delFrom, setDelFrom] = useState("");
   const [delTo, setDelTo] = useState("");
@@ -185,6 +186,32 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   async function updateDeviceFridge(id, name, fridgeName) {
     await supabase.from("devices").update({ default_fridge_name: fridgeName }).eq("id", id);
     await logActivity?.("settings_change", "config", `${name} — default fridge set to "${fridgeName || "(none)"}"`);
+    reload();
+  }
+
+  // Picks a RANDOM subset (never more than 10%) of already-expired lots that
+  // still show some usage, and resets them to "never used" (current_quantity
+  // = quantity_received) — so old, already-passed stock realistically
+  // includes some expired-and-unused (wasted) examples in the report, the
+  // way it would in real life. This overwrites real quantity data on the
+  // lots it picks, so it's meant to be run once on your seeded/demo history.
+  async function simulateHistoricalWaste() {
+    const today = new Date().toISOString().slice(0, 10);
+    const candidates = (reagents || []).filter(
+      (r) => !r.deleted && r.expiry_date < today && r.current_quantity < r.quantity_received
+    );
+    if (candidates.length === 0) {
+      setWasteMsg("No eligible expired lots found (need lots that are already expired).");
+      return;
+    }
+    const maxCount = Math.max(1, Math.floor(candidates.length * 0.10));
+    const targetCount = 1 + Math.floor(Math.random() * maxCount); // random amount, capped at 10%
+    const shuffled = [...candidates].sort(() => Math.random() - 0.5).slice(0, targetCount);
+    for (const r of shuffled) {
+      await supabase.from("reagents").update({ current_quantity: r.quantity_received }).eq("id", r.id);
+    }
+    await logActivity?.("settings_change", "config", `Marked ${shuffled.length} historical expired lot(s) as unused (waste) for report realism`);
+    setWasteMsg(`Done — marked ${shuffled.length} of ${candidates.length} eligible expired lot(s) as expired-unused (waste). Run again for a different random pick.`);
     reload();
   }
 
@@ -700,6 +727,19 @@ export default function Settings({ config, presets, role, staffAccounts, devices
               <Pencil size={14} /> Move matching lots
             </button>
             {dvMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{dvMsg}</div>}
+          </div>
+          </Section>
+
+          <Section title="Simulate historical waste (report realism)" open={!!openSections.dt_waste} onToggle={() => toggleSection("dt_waste")} nested>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 24 }}>SIMULATE HISTORICAL WASTE</div>
+          <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>
+            Randomly picks up to 10% of your already-expired old lots and marks them as never used (expired-unused / waste), so the Report reflects realistic waste among past stock. Each run picks a different random amount and set of lots — safe to run once for your seeded history.
+          </div>
+          <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16 }}>
+            <button onClick={simulateHistoricalWaste} style={{ background: "var(--accent-2)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}>
+              <Pencil size={14} /> Mark random expired lots as waste (≤10%)
+            </button>
+            {wasteMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{wasteMsg}</div>}
           </div>
           </Section>
         </Section>
