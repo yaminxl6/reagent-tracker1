@@ -22,22 +22,81 @@ const cardStyle = {
   boxShadow: "0 8px 24px rgba(0,0,0,0.06)", padding: 24,
 };
 
+function statusBadge(days) {
+  if (days < 0) return { label: `${Math.abs(days)}d overdue`, bg: "#FDECEC", color: "#DC2626" };
+  if (days <= 30) return { label: `${days} days`, bg: "#FEF3E2", color: "#D97706" };
+  if (days <= 60) return { label: `${days} days`, bg: "#E7F7F1", color: "#059669" };
+  return { label: `${days} days`, bg: "#EFF4FE", color: "#2563EB" };
+}
+
+function ExpiryTable({ rows, today, onSelectGroup, emptyMsg }) {
+  if (rows.length === 0) {
+    return <div style={{ fontSize: 13, color: "#9CA3AF", padding: "16px 0" }}>{emptyMsg}</div>;
+  }
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            {["Reagent", "Batch", "Expiry", "Status"].map((h) => (
+              <th key={h} style={{ textAlign: "left", fontSize: 12, fontWeight: 600, color: "#6B7280", padding: "0 0 10px", borderBottom: "1px solid #F3F4F6" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.slice(0, 5).map((g) => {
+            const days = daysBetween(g.fefo.expiry_date, today);
+            const badge = statusBadge(days);
+            return (
+              <tr key={g.name} onClick={() => onSelectGroup(g)} style={{ cursor: "pointer" }}>
+                <td style={{ padding: "12px 0", fontSize: 13.5, fontWeight: 600, color: "#111827", borderBottom: "1px solid #F9FAFB" }}>{g.name}</td>
+                <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", fontFamily: "monospace", borderBottom: "1px solid #F9FAFB" }}>{g.fefo.lot_number}</td>
+                <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", borderBottom: "1px solid #F9FAFB" }}>{g.fefo.expiry_date}</td>
+                <td style={{ padding: "12px 0", borderBottom: "1px solid #F9FAFB" }}>
+                  <span style={{ background: badge.bg, color: badge.color, fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>{badge.label}</span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+
 export default function Home({ counts, groups, reagents, logs, devices, username, role, onNavigate, onSelectGroup }) {
   const today = todayISO();
   const [chartMonth, setChartMonth] = useState(today.slice(0, 7));
 
   const lowStockLots = useMemo(
     () => (reagents || [])
-      .filter((r) => !r.deleted && r.current_quantity <= r.low_stock_threshold)
+      .filter((r) => !r.deleted && r.current_quantity > 0 && r.current_quantity <= r.low_stock_threshold)
       .filter((r) => daysBetween(r.expiry_date, today) > -30)
       .sort((a, b) => a.current_quantity - b.current_quantity),
     [reagents, today]
   );
 
+  const outOfStockLots = useMemo(
+    () => (reagents || [])
+      .filter((r) => !r.deleted && r.current_quantity <= 0)
+      .filter((r) => daysBetween(r.expiry_date, today) > -30)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [reagents, today]
+  );
+
   const [expirySort, setExpirySort] = useState("soonest");
+  const expired = useMemo(
+    () => (groups || [])
+      .filter((g) => g.fefo && daysBetween(g.fefo.expiry_date, today) < 0)
+      .sort((a, b) => expirySort === "soonest"
+        ? new Date(a.fefo.expiry_date) - new Date(b.fefo.expiry_date)
+        : new Date(b.fefo.expiry_date) - new Date(a.fefo.expiry_date)),
+    [groups, today, expirySort]
+  );
   const expiringSoon = useMemo(
     () => (groups || [])
-      .filter((g) => g.fefo && daysBetween(g.fefo.expiry_date, today) <= 90)
+      .filter((g) => g.fefo && daysBetween(g.fefo.expiry_date, today) >= 0 && daysBetween(g.fefo.expiry_date, today) <= 90)
       .sort((a, b) => expirySort === "soonest"
         ? new Date(a.fefo.expiry_date) - new Date(b.fefo.expiry_date)
         : new Date(b.fefo.expiry_date) - new Date(a.fefo.expiry_date)),
@@ -74,7 +133,9 @@ export default function Home({ counts, groups, reagents, logs, devices, username
   const stats = [
     { label: "Total Reagents", value: (groups || []).length, icon: FlaskConical, color: "#2563EB", bg: "#EFF4FE", trend: growthPct },
     { label: "Low Stock", value: lowStockLots.length, icon: AlertTriangle, color: "#D97706", bg: "#FEF3E2" },
-    { label: "Expiring Soon", value: expiringSoon.length, icon: Clock, color: "#DC2626", bg: "#FDECEC" },
+    { label: "Out of Stock", value: outOfStockLots.length, icon: AlertTriangle, color: "#7C2D12", bg: "#FDECEC" },
+    { label: "Expiring Soon", value: expiringSoon.length, icon: Clock, color: "#2563EB", bg: "#EAF1FE" },
+    { label: "Expired", value: expired.length, icon: Clock, color: "#DC2626", bg: "#FDECEC" },
     { label: "Connected Devices", value: deviceCount, icon: Monitor, color: "#059669", bg: "#E7F7F1" },
   ];
 
@@ -101,12 +162,6 @@ export default function Home({ counts, groups, reagents, logs, devices, username
     return opts;
   }, [today]);
 
-  function statusBadge(days) {
-    if (days < 0) return { label: "Expired", bg: "#FDECEC", color: "#DC2626" };
-    if (days <= 30) return { label: `${days} days`, bg: "#FEF3E2", color: "#D97706" };
-    if (days <= 60) return { label: `${days} days`, bg: "#E7F7F1", color: "#059669" };
-    return { label: `${days} days`, bg: "#EFF4FE", color: "#2563EB" };
-  }
 
   const tiles = [
     { key: "stock", label: "Reagents & Stock", desc: "Inventory, expiry, and consumption", icon: LayoutGrid },
@@ -159,7 +214,7 @@ export default function Home({ counts, groups, reagents, logs, devices, username
         ))}
       </div>
 
-      {/* Row 2 — Expiring Soon table + Usage Analytics chart */}
+      {/* Row 2 — Expiring Soon + Expired tables */}
       <div className="dash-animate" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 24, marginBottom: 32 }}>
         <div className="dash-card" style={cardStyle}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 10, flexWrap: "wrap" }}>
@@ -172,39 +227,20 @@ export default function Home({ counts, groups, reagents, logs, devices, username
               <button onClick={() => onNavigate("stock")} style={{ background: "none", border: "none", color: "var(--accent-1)", fontSize: 13, fontWeight: 600 }}>View all</button>
             </div>
           </div>
-          {expiringSoon.length === 0 ? (
-            <div style={{ fontSize: 13, color: "#9CA3AF", padding: "16px 0" }}>Nothing expiring within 90 days.</div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    {["Reagent", "Batch", "Expiry", "Status"].map((h) => (
-                      <th key={h} style={{ textAlign: "left", fontSize: 12, fontWeight: 600, color: "#6B7280", padding: "0 0 10px", borderBottom: "1px solid #F3F4F6" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {expiringSoon.slice(0, 5).map((g) => {
-                    const days = daysBetween(g.fefo.expiry_date, today);
-                    const badge = statusBadge(days);
-                    return (
-                      <tr key={g.name} onClick={() => onSelectGroup(g)} style={{ cursor: "pointer" }}>
-                        <td style={{ padding: "12px 0", fontSize: 13.5, fontWeight: 600, color: "#111827", borderBottom: "1px solid #F9FAFB" }}>{g.name}</td>
-                        <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", fontFamily: "monospace", borderBottom: "1px solid #F9FAFB" }}>{g.fefo.lot_number}</td>
-                        <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", borderBottom: "1px solid #F9FAFB" }}>{g.fefo.expiry_date}</td>
-                        <td style={{ padding: "12px 0", borderBottom: "1px solid #F9FAFB" }}>
-                          <span style={{ background: badge.bg, color: badge.color, fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>{badge.label}</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <ExpiryTable rows={expiringSoon} today={today} onSelectGroup={onSelectGroup} emptyMsg="Nothing expiring within 90 days." />
         </div>
 
+        <div className="dash-card" style={cardStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 10, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#DC2626" }}>Expired</div>
+            <button onClick={() => onNavigate("stock")} style={{ background: "none", border: "none", color: "var(--accent-1)", fontSize: 13, fontWeight: 600 }}>View all</button>
+          </div>
+          <ExpiryTable rows={expired} today={today} onSelectGroup={onSelectGroup} emptyMsg="Nothing expired right now." />
+        </div>
+      </div>
+
+      {/* Row 2b — Usage Analytics chart, full width */}
+      <div className="dash-animate" style={{ marginBottom: 32 }}>
         <div className="dash-card" style={cardStyle}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>Usage Analytics</div>
@@ -257,6 +293,39 @@ export default function Home({ counts, groups, reagents, logs, devices, username
                       <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", borderBottom: "1px solid #F9FAFB" }}>{r.low_stock_threshold} {r.unit}</td>
                       <td style={{ padding: "12px 0", borderBottom: "1px solid #F9FAFB" }}>
                         <span style={{ background: "#FDECEC", color: "#DC2626", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>Low</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="dash-card" style={cardStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#7C2D12" }}>Out of Stock</div>
+            <button onClick={() => onNavigate("stock")} style={{ background: "none", border: "none", color: "var(--accent-1)", fontSize: 13, fontWeight: 600 }}>View all</button>
+          </div>
+          {outOfStockLots.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#9CA3AF", padding: "16px 0" }}>Nothing is fully out of stock.</div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    {["Reagent", "Last known", "Status"].map((h) => (
+                      <th key={h} style={{ textAlign: "left", fontSize: 12, fontWeight: 600, color: "#6B7280", padding: "0 0 10px", borderBottom: "1px solid #F3F4F6" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {outOfStockLots.slice(0, 5).map((r) => (
+                    <tr key={r.id}>
+                      <td style={{ padding: "12px 0", fontSize: 13.5, fontWeight: 600, color: "#111827", borderBottom: "1px solid #F9FAFB" }}>{r.name}</td>
+                      <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", borderBottom: "1px solid #F9FAFB" }}>0 / {r.quantity_received} {r.unit}</td>
+                      <td style={{ padding: "12px 0", borderBottom: "1px solid #F9FAFB" }}>
+                        <span style={{ background: "#FDECEC", color: "#7C2D12", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>Out of stock</span>
                       </td>
                     </tr>
                   ))}
