@@ -222,30 +222,34 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   // device or item preset — the same rule used for new receiving. Run this
   // again any time after adjusting the default-fridge mappings below.
   async function applyDefaultFridges() {
-    const byDeviceFridge = {};
-    (devices || []).forEach((d) => { if (d.default_fridge_name) byDeviceFridge[d.name] = d.default_fridge_name; });
-    const byPresetFridge = {};
-    (presets || []).forEach((p) => { if (p.default_fridge_name) byPresetFridge[p.name] = p.default_fridge_name; });
-    const toUpdate = (reagents || []).filter((r) => !r.fridge_name && (byPresetFridge[r.name] || byDeviceFridge[r.device]));
-    if (toUpdate.length === 0) {
-      setFridgeApplyMsg("Nothing to update — either every lot already has a fridge, or no device/item above has a default fridge set yet that matches an existing lot's device/name.");
-      return;
+    try {
+      const byDeviceFridge = {};
+      (devices || []).forEach((d) => { if (d.default_fridge_name) byDeviceFridge[d.name] = d.default_fridge_name; });
+      const byPresetFridge = {};
+      (presets || []).forEach((p) => { if (p.default_fridge_name) byPresetFridge[p.name] = p.default_fridge_name; });
+      const toUpdate = (reagents || []).filter((r) => !r.fridge_name && (byPresetFridge[r.name] || byDeviceFridge[r.device]));
+      if (toUpdate.length === 0) {
+        setFridgeApplyMsg("Nothing to update — either every lot already has a fridge, or no device/item above has a default fridge set yet that matches an existing lot's device/name.");
+        return;
+      }
+      let okCount = 0;
+      let firstError = "";
+      for (const r of toUpdate) {
+        const fridge = byPresetFridge[r.name] || byDeviceFridge[r.device];
+        const { error } = await supabase.from("reagents").update({ fridge_name: fridge }).eq("id", r.id);
+        if (error) { if (!firstError) firstError = error.message; }
+        else okCount++;
+      }
+      setFridgeApplyMsg(
+        firstError
+          ? `Updated ${okCount} of ${toUpdate.length} — stopped on error: ${firstError}. This usually means the SQL script hasn't been run yet (fridge_name column missing).`
+          : `Done — updated ${okCount} of ${toUpdate.length} eligible lot(s).`
+      );
+      try { await logActivity?.("settings_change", "config", `Auto-assigned a fridge to ${okCount} existing lot(s) based on device/item defaults`); } catch (e) { /* non-fatal */ }
+      reload();
+    } catch (err) {
+      setFridgeApplyMsg(`Unexpected error: ${err?.message || err}`);
     }
-    let okCount = 0;
-    let firstError = "";
-    for (const r of toUpdate) {
-      const fridge = byPresetFridge[r.name] || byDeviceFridge[r.device];
-      const { error } = await supabase.from("reagents").update({ fridge_name: fridge }).eq("id", r.id);
-      if (error) { if (!firstError) firstError = error.message; }
-      else okCount++;
-    }
-    await logActivity?.("settings_change", "config", `Auto-assigned a fridge to ${okCount} existing lot(s) based on device/item defaults`);
-    setFridgeApplyMsg(
-      firstError
-        ? `Updated ${okCount} of ${toUpdate.length} — stopped on error: ${firstError}. This usually means the SQL script hasn't been run yet (fridge_name column missing).`
-        : `Done — updated ${okCount} of ${toUpdate.length} eligible lot(s).`
-    );
-    reload();
   }
 
   async function deleteDevice(id, name) {
