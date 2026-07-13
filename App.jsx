@@ -803,6 +803,7 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
   const [dateTo, setDateTo] = useState(todayISO());
   const [searchLot, setSearchLot] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
+  const [sortDir, setSortDir] = useState("newest"); // "newest" or "oldest"
 
   // Most recent temperature reading logged for a fridge on/before a given date
   // (falls back to the most recent reading overall if none exist before it).
@@ -833,8 +834,8 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
           || (r.fridge_name || "").toLowerCase().includes(term)
         : r.date_added >= dateFrom && r.date_added <= dateTo))
       .filter((r) => (deptFilter ? r.department === deptFilter : true))
-      .sort((a, b) => new Date(b.date_added) - new Date(a.date_added));
-  }, [reagents, searchLot, dateFrom, dateTo, deptFilter]);
+      .sort((a, b) => sortDir === "oldest" ? new Date(a.date_added) - new Date(b.date_added) : new Date(b.date_added) - new Date(a.date_added));
+  }, [reagents, searchLot, dateFrom, dateTo, deptFilter, sortDir]);
 
   function logsFor(reagentId) {
     return logs.filter((l) => l.reagent_id === reagentId && !l.deleted).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -842,44 +843,67 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
 
   async function exportExcel() {
     const XLSX = await import("xlsx");
+    const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const HEADERS = [
+      "Reagent","Department","Type","Device","Fridge","Fridge Temp (°C)","Lot Number",
+      "Received By","Received Date","Expiry Date","Qty Received","Qty Remaining","Unit",
+      "Intact Container","Complete Components","Expiration Validity","Lot Matches Kit","Storage Condition",
+      "Receiving Note","Inspection Note","Expired Disposition",
+      "Consumption Date","Amount Used","Used By","Tested by QC",
+    ];
+
+    // One row per lot (or per consumption entry, if it has any), same as
+    // before — just also tagged with year/month so we can split sheets.
     const rows = [];
     matchedLots.forEach((r) => {
       const rLogs = logsFor(r.id);
       const temp = tempFor(r.fridge_name, r.date_added);
+      const year = (r.date_added || "").slice(0, 4) || "Unknown";
+      const month = (r.date_added || "").slice(5, 7) || "00";
       const base = {
-        Reagent: r.name,
-        Department: r.department,
-        Type: r.item_type,
-        Device: r.device || "",
-        Fridge: r.fridge_name || "",
-        "Fridge Temp (°C)": temp ? temp.temperature : "",
-        "Lot Number": r.lot_number,
-        "Received By": r.added_by,
-        "Received Date": r.date_added,
-        "Expiry Date": r.expiry_date,
-        "Qty Received": r.quantity_received,
-        "Qty Remaining": r.current_quantity,
-        Unit: r.unit,
-        "Intact Container": r.intact_container ? "Yes" : "No",
-        "Complete Components": r.complete_compound ? "Yes" : "No",
-        "Expiration Validity": r.expiration_validity ? "Yes" : "No",
-        "Lot Matches Kit": r.lot_matches_kit ? "Yes" : "No",
-        "Storage Condition": r.storage_condition_ok ? "Yes" : "No",
-        "Receiving Note": r.receiving_notes || "",
-        "Inspection Note": r.inspection_notes || "",
-        "Expired Disposition": expiredDisposition(r)?.label.replace("⚠ ", "") || "",
+        Reagent: r.name, Department: r.department, Type: r.item_type, Device: r.device || "",
+        Fridge: r.fridge_name || "", "Fridge Temp (°C)": temp ? temp.temperature : "",
+        "Lot Number": r.lot_number, "Received By": r.added_by, "Received Date": r.date_added,
+        "Expiry Date": r.expiry_date, "Qty Received": r.quantity_received, "Qty Remaining": r.current_quantity,
+        Unit: r.unit, "Intact Container": r.intact_container ? "Yes" : "No", "Complete Components": r.complete_compound ? "Yes" : "No",
+        "Expiration Validity": r.expiration_validity ? "Yes" : "No", "Lot Matches Kit": r.lot_matches_kit ? "Yes" : "No",
+        "Storage Condition": r.storage_condition_ok ? "Yes" : "No", "Receiving Note": r.receiving_notes || "",
+        "Inspection Note": r.inspection_notes || "", "Expired Disposition": expiredDisposition(r)?.label.replace("⚠ ", "") || "",
       };
       if (rLogs.length === 0) {
-        rows.push({ ...base, "Consumption Date": "", "Amount Used": "", "Used By": "", "Tested by QC": "" });
+        rows.push({ ...base, "Consumption Date": "", "Amount Used": "", "Used By": "", "Tested by QC": "", __year: year, __month: month });
       } else {
         rLogs.forEach((l) => {
-          rows.push({ ...base, "Consumption Date": l.date, "Amount Used": l.amount, "Used By": l.used_by, "Tested by QC": l.tested_by_qc ? "Yes" : "No" });
+          rows.push({ ...base, "Consumption Date": l.date, "Amount Used": l.amount, "Used By": l.used_by, "Tested by QC": l.tested_by_qc ? "Yes" : "No", __year: year, __month: month });
         });
       }
     });
-    const sheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Note: "No records match this filter." }]);
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, sheet, "Report");
+    if (rows.length === 0) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["No records match this filter."]]), "Report");
+    } else {
+      // One tab per month (shown along the bottom of Excel) — e.g. "January
+      // 2023", "February 2023", ... — ordered by the same Newest/Oldest
+      // toggle used on screen.
+      const byMonth = {};
+      rows.forEach((r) => {
+        const key = `${r.__year}-${r.__month}`;
+        (byMonth[key] ||= []).push(r);
+      });
+      const keys = Object.keys(byMonth).sort((a, b) => (sortDir === "oldest" ? a.localeCompare(b) : b.localeCompare(a)));
+      const usedNames = new Set();
+      keys.forEach((key) => {
+        const [year, month] = key.split("-");
+        let name = `${MONTH_NAMES[parseInt(month, 10) - 1] || "Unknown"} ${year}`;
+        name = name.slice(0, 31);
+        while (usedNames.has(name)) name = name.slice(0, 29) + "_2"; // extremely unlikely collision
+        usedNames.add(name);
+        const aoa = [HEADERS, ...byMonth[key].map((r) => HEADERS.map((h) => r[h]))];
+        const sheet = XLSX.utils.aoa_to_sheet(aoa);
+        XLSX.utils.book_append_sheet(wb, sheet, name);
+      });
+    }
     XLSX.writeFile(wb, `reagent-report-${dateFrom}-to-${dateTo}.xlsx`);
   }
 
@@ -910,6 +934,12 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
           <option value="">All departments</option>
           {departments.map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
+        <button
+          onClick={() => setSortDir((d) => (d === "newest" ? "oldest" : "newest"))}
+          style={{ border: "1px solid #C7D1CE", borderRadius: 6, padding: "7px 10px", fontSize: 13, fontWeight: 600, background: "#fff", color: "#516361", display: "flex", alignItems: "center", gap: 5 }}
+        >
+          {sortDir === "newest" ? "Newest first ↓" : "Oldest first ↑"}
+        </button>
       </div>
       {searchLot.trim() && <div style={{ fontSize: 12, color: "#8A9694", marginBottom: 10 }}>Searching — date filter is ignored while searching.</div>}
 

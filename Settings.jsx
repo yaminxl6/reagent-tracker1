@@ -198,6 +198,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   // way it would in real life. This overwrites real quantity data on the
   // lots it picks, so it's meant to be run once on your seeded/demo history.
   async function simulateHistoricalWaste() {
+    setWasteMsg("Running…");
     const today = new Date().toISOString().slice(0, 10);
     const candidates = (reagents || []).filter(
       (r) => !r.deleted && r.expiry_date < today && r.current_quantity < r.quantity_received
@@ -209,11 +210,9 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     const maxCount = Math.max(1, Math.floor(candidates.length * 0.10));
     const targetCount = 1 + Math.floor(Math.random() * maxCount); // random amount, capped at 10%
     const shuffled = [...candidates].sort(() => Math.random() - 0.5).slice(0, targetCount);
-    for (const r of shuffled) {
-      await supabase.from("reagents").update({ current_quantity: r.quantity_received }).eq("id", r.id);
-    }
-    await logActivity?.("settings_change", "config", `Marked ${shuffled.length} historical expired lot(s) as unused (waste) for report realism`);
+    await Promise.all(shuffled.map((r) => supabase.from("reagents").update({ current_quantity: r.quantity_received }).eq("id", r.id)));
     setWasteMsg(`Done — marked ${shuffled.length} of ${candidates.length} eligible expired lot(s) as expired-unused (waste). Run again for a different random pick.`);
+    try { await logActivity?.("settings_change", "config", `Marked ${shuffled.length} historical expired lot(s) as unused (waste) for report realism`); } catch (e) { /* non-fatal */ }
     reload();
   }
 
@@ -235,12 +234,14 @@ export default function Settings({ config, presets, role, staffAccounts, devices
       }
       let okCount = 0;
       let firstError = "";
-      for (const r of toUpdate) {
+      const results = await Promise.all(toUpdate.map((r) => {
         const fridge = byPresetFridge[r.name] || byDeviceFridge[r.device];
-        const { error } = await supabase.from("reagents").update({ fridge_name: fridge }).eq("id", r.id);
+        return supabase.from("reagents").update({ fridge_name: fridge }).eq("id", r.id);
+      }));
+      results.forEach(({ error }) => {
         if (error) { if (!firstError) firstError = error.message; }
         else okCount++;
-      }
+      });
       setFridgeApplyMsg(
         firstError
           ? `Updated ${okCount} of ${toUpdate.length} — stopped on error: ${firstError}. This usually means the SQL script hasn't been run yet (fridge_name column missing).`
