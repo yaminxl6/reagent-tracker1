@@ -222,6 +222,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   // device or item preset — the same rule used for new receiving. Run this
   // again any time after adjusting the default-fridge mappings below.
   async function applyDefaultFridges() {
+    setFridgeApplyMsg("Running…");
     try {
       const byDeviceFridge = {};
       (devices || []).forEach((d) => { if (d.default_fridge_name) byDeviceFridge[d.name] = d.default_fridge_name; });
@@ -322,7 +323,8 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   return (
     <div>
       <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Settings</h2>
-      <div style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 20 }}>Tap a section below to expand it.</div>
+      <div style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 6 }}>Tap a section below to expand it.</div>
+      <div style={{ fontSize: 10.5, color: "#C7D1CE", marginBottom: 20 }}>build 2026-07-13c</div>
 
       <Section title="Departments" open={!!openSections.departments} onToggle={() => toggleSection("departments")}>
       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3 }}>DEPARTMENTS</div>
