@@ -58,6 +58,8 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     owner_password: config.owner_password,
     low_stock_default_percent: config.low_stock_default_percent,
     expiry_warning_days: config.expiry_warning_days ?? 30,
+    critical_expiry_days: config.critical_expiry_days ?? 3,
+    archive_grace_days: config.archive_grace_days ?? 30,
     app_name: config.app_name || "Reagent Log",
     app_name_color: config.app_name_color || "#1B2328",
   });
@@ -543,6 +545,12 @@ export default function Settings({ config, presets, role, staffAccounts, devices
         </label>
         <label style={labelStyle}>"Expiring soon" warning window (days before expiry)
           <input type="number" style={inputStyle} value={creds.expiry_warning_days} onChange={(e) => setCreds((c) => ({ ...c, expiry_warning_days: Number(e.target.value) }))} />
+        </label>
+        <label style={labelStyle}>Blinking alert threshold (days left — flashes yellow before expiry, red once expired)
+          <input type="number" style={inputStyle} value={creds.critical_expiry_days} onChange={(e) => setCreds((c) => ({ ...c, critical_expiry_days: Number(e.target.value) }))} />
+        </label>
+        <label style={labelStyle}>How long expired items keep showing on Home/Stock/Fridges/Devices (days after expiry, then it drops off there — always stays in Reports)
+          <input type="number" style={inputStyle} value={creds.archive_grace_days} onChange={(e) => setCreds((c) => ({ ...c, archive_grace_days: Number(e.target.value) }))} />
         </label>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
           <label style={{ ...labelStyle, flex: 1 }}>App name (shown in sidebar & login screen)

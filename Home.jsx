@@ -29,7 +29,7 @@ function statusBadge(days) {
   return { label: `${days} days`, bg: "#EFF4FE", color: "#2563EB" };
 }
 
-function ExpiryTable({ rows, today, onSelectGroup, emptyMsg }) {
+function ExpiryTable({ rows, today, criticalDays, onSelectGroup, emptyMsg }) {
   if (rows.length === 0) {
     return <div style={{ fontSize: 13, color: "#9CA3AF", padding: "16px 0" }}>{emptyMsg}</div>;
   }
@@ -47,13 +47,16 @@ function ExpiryTable({ rows, today, onSelectGroup, emptyMsg }) {
           {rows.slice(0, 5).map((g) => {
             const days = daysBetween(g.fefo.expiry_date, today);
             const badge = statusBadge(days);
+            // Blinks red once it's actually expired; blinks yellow once it's
+            // within the "about to expire" window you set in Settings.
+            const blinkClass = days < 0 ? "blink-expired" : days <= (criticalDays ?? 3) ? "blink-soon" : "";
             return (
               <tr key={g.name} onClick={() => onSelectGroup(g)} style={{ cursor: "pointer" }}>
                 <td style={{ padding: "12px 0", fontSize: 13.5, fontWeight: 600, color: "#111827", borderBottom: "1px solid #F9FAFB" }}>{g.name}</td>
                 <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", fontFamily: "monospace", borderBottom: "1px solid #F9FAFB" }}>{g.fefo.lot_number}</td>
                 <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", borderBottom: "1px solid #F9FAFB" }}>{g.fefo.expiry_date}</td>
                 <td style={{ padding: "12px 0", borderBottom: "1px solid #F9FAFB" }}>
-                  <span style={{ background: badge.bg, color: badge.color, fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>{badge.label}</span>
+                  <span className={blinkClass} style={{ background: badge.bg, color: badge.color, fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>{badge.label}</span>
                 </td>
               </tr>
             );
@@ -65,7 +68,7 @@ function ExpiryTable({ rows, today, onSelectGroup, emptyMsg }) {
 }
 
 
-export default function Home({ counts, groups, reagents, logs, devices, username, role, onNavigate, onSelectGroup }) {
+export default function Home({ counts, groups, reagents, logs, devices, username, role, criticalExpiryDays, onNavigate, onSelectGroup }) {
   const today = todayISO();
   const [chartMonth, setChartMonth] = useState(today.slice(0, 7));
 
@@ -230,7 +233,7 @@ export default function Home({ counts, groups, reagents, logs, devices, username
               <button onClick={() => onNavigate("stock")} style={{ background: "none", border: "none", color: "var(--accent-1)", fontSize: 13, fontWeight: 600 }}>View all</button>
             </div>
           </div>
-          <ExpiryTable rows={expiringSoon} today={today} onSelectGroup={onSelectGroup} emptyMsg="Nothing expiring within 90 days." />
+          <ExpiryTable rows={expiringSoon} today={today} criticalDays={criticalExpiryDays} onSelectGroup={onSelectGroup} emptyMsg="Nothing expiring within 90 days." />
         </div>
 
         <div className="dash-card" style={cardStyle}>
@@ -238,7 +241,7 @@ export default function Home({ counts, groups, reagents, logs, devices, username
             <div style={{ fontSize: 16, fontWeight: 700, color: "#DC2626" }}>Expired</div>
             <button onClick={() => onNavigate("stock")} style={{ background: "none", border: "none", color: "var(--accent-1)", fontSize: 13, fontWeight: 600 }}>View all</button>
           </div>
-          <ExpiryTable rows={expired} today={today} onSelectGroup={onSelectGroup} emptyMsg="Nothing expired right now." />
+          <ExpiryTable rows={expired} today={today} criticalDays={criticalExpiryDays} onSelectGroup={onSelectGroup} emptyMsg="Nothing expired right now." />
         </div>
       </div>
 

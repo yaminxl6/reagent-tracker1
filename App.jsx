@@ -328,10 +328,11 @@ export default function App() {
     });
   }, [reagents, config?.expiry_warning_days]);
 
-  // Auto-archiving: a lot that expired more than 30 days ago drops out of
-  // the day-to-day views (Stock, Fridges, Devices) automatically, but is
-  // never deleted — it always stays fully visible in Reports.
-  const ARCHIVE_GRACE_DAYS = 30;
+  // Auto-archiving: a lot that expired more than this many days ago drops
+  // out of the day-to-day views (Stock, Fridges, Devices) automatically —
+  // configurable in Settings — but is never deleted, and always stays fully
+  // visible in Reports.
+  const ARCHIVE_GRACE_DAYS = config?.archive_grace_days ?? 30;
   function isArchivedLot(r) {
     return daysBetween(r.expiry_date, todayISO()) <= -ARCHIVE_GRACE_DAYS;
   }
@@ -346,7 +347,7 @@ export default function App() {
         return { ...g, items: liveItems, fefo: liveItems[0], totalQty, status: worstStatus, flagged };
       })
       .filter(Boolean);
-  }, [groups, config?.expiry_warning_days]);
+  }, [groups, config?.expiry_warning_days, ARCHIVE_GRACE_DAYS]);
 
   const counts = useMemo(() => {
     const c = { red: 0, yellow: 0, green: 0, flagged: 0 };
@@ -416,6 +417,10 @@ export default function App() {
         .dash-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(0,0,0,0.08) !important; }
         @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .dash-animate { animation: fadeSlideUp 0.4s ease both; }
+        @keyframes blinkYellow { 0%, 100% { background: #FBF3DF; border-color: #B8860B; } 50% { background: #F5D98A; border-color: #8A6200; } }
+        @keyframes blinkRed { 0%, 100% { background: #FBEAE6; border-color: #C1432B; } 50% { background: #F3AE9D; border-color: #7A1F10; } }
+        .blink-soon { animation: blinkYellow 1s step-start infinite; border: 1px solid #B8860B; }
+        .blink-expired { animation: blinkRed 1s step-start infinite; border: 1px solid #C1432B; }
         .app-sidebar { width: 230px; flex-shrink: 0; background: #fff; border-right: 1px solid #EDEFF2; display: flex; flex-direction: column; }
         .app-main-col { flex: 1; min-width: 0; }
         .mobile-topbar { display: none; }
@@ -463,7 +468,7 @@ export default function App() {
           </div>
         )}
 
-        {tab === "home" && <Home counts={counts} groups={activeGroups} reagents={reagents} logs={logs} devices={devices} username={username} role={role} onNavigate={setTab} onSelectGroup={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
+        {tab === "home" && <Home counts={counts} groups={activeGroups} reagents={reagents} logs={logs} devices={devices} username={username} role={role} criticalExpiryDays={config?.critical_expiry_days ?? 3} onNavigate={setTab} onSelectGroup={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
         {tab === "stock" && <Dashboard groups={activeGroups} allNames={[...new Set(groups.map((g) => g.name))]} counts={counts} departments={config.departments || []} role={role} onDeleteReagent={deleteReagent} onSelect={(g) => { setSelectedGroup(g); setTab("detail"); }} />}
         {tab === "devices" && <DeviceUsage />}
         {tab === "orderplan" && <OrderPlan reagents={reagents} devices={devices} logActivity={logActivity} />}

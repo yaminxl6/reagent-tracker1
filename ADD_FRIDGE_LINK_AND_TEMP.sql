@@ -45,3 +45,11 @@ update devices set default_fridge_name = 'R009'
 update reagent_presets set default_fridge_name = 'R0008'
   where default_fridge_name = '' and (name ilike '%abo%' or name ilike '%ptt%' or name ilike '% pt %' or name ilike 'pt %' or name ilike '% pt');
 
+-- 4) Two more configurable settings (edit anytime in Settings → Login & Defaults):
+--    critical_expiry_days: how many days before expiry the blinking yellow
+--    alert kicks in (blinks red once actually expired).
+--    archive_grace_days: how many days an expired lot keeps showing on
+--    Home/Stock/Fridges/Devices before it drops off there (always stays in Reports).
+alter table app_config add column if not exists critical_expiry_days integer not null default 3;
+alter table app_config add column if not exists archive_grace_days integer not null default 30;
+
