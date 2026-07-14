@@ -111,11 +111,12 @@ export default function App() {
   }
 
   async function loadAll() {
-    let r, l;
+    let r, l, tempAll;
     try {
-      [r, l] = await Promise.all([
+      [r, l, tempAll] = await Promise.all([
         fetchAll("reagents", "expiry_date"),
         fetchAll("consumption_logs"),
+        fetchAll("fridge_temperature_logs", "date", false),
       ]);
     } catch (err) {
       setError("Could not connect to the database. Check Supabase settings.");
@@ -123,14 +124,13 @@ export default function App() {
       setLogs([]);
       return;
     }
-    const [{ data: p }, { data: s }, { data: a }, { data: dv }, supRes, fridgeRes, tempRes] = await Promise.all([
+    const [{ data: p }, { data: s }, { data: a }, { data: dv }, supRes, fridgeRes] = await Promise.all([
       supabase.from("reagent_presets").select("*").order("name"),
       supabase.from("staff_accounts").select("*").order("username"),
       supabase.from("audit_log").select("*").order("performed_at", { ascending: false }),
       supabase.from("devices").select("*").order("name"),
       supabase.from("suppliers").select("*").order("name"),
       supabase.from("fridge_inventory").select("refrigerator_name"),
-      supabase.from("fridge_temperature_logs").select("*").order("date", { ascending: false }),
     ]);
     setReagents(r || []);
     setLogs(l || []);
@@ -143,7 +143,7 @@ export default function App() {
     const namesFromReagents = (r || []).map((x) => x.fridge_name).filter(Boolean);
     const allNames = [...new Set([...BASE_FRIDGES, ...namesFromFridgeSheet, ...namesFromReagents])].sort();
     setFridgeNames([ROOM_TEMP, ...allNames]);
-    setFridgeTempLogs(tempRes?.data || []);
+    setFridgeTempLogs(tempAll || []);
   }
 
   async function logActivity(action, entity, description) {
@@ -814,14 +814,25 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  // Index temperature readings by fridge ONCE (sorted newest-first), instead
+  // of re-filtering the whole (thousands-of-rows) table for every card —
+  // this was the main cause of the page feeling heavy/slow.
+  const tempByFridge = useMemo(() => {
+    const map = {};
+    (fridgeTempLogs || []).forEach((t) => {
+      (map[t.fridge_name] ||= []).push(t);
+    });
+    Object.values(map).forEach((arr) => arr.sort((a, b) => new Date(b.date) - new Date(a.date)));
+    return map;
+  }, [fridgeTempLogs]);
+
   // Most recent temperature reading logged for a fridge on/before a given date
   // (falls back to the most recent reading overall if none exist before it).
   function tempFor(fridgeName, onOrBefore) {
     if (!fridgeName) return null;
-    const readings = (fridgeTempLogs || []).filter((t) => t.fridge_name === fridgeName);
-    if (readings.length === 0) return null;
-    const before = readings.filter((t) => t.date <= onOrBefore).sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-    return before || readings.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+    const readings = tempByFridge[fridgeName];
+    if (!readings || readings.length === 0) return null;
+    return readings.find((t) => t.date <= onOrBefore) || readings[0];
   }
   // Full disposition of an expired lot, for the report badge.
   function expiredDisposition(r) {
