@@ -65,7 +65,6 @@ export default function App() {
   const [devices, setDevices] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [fridgeNames, setFridgeNames] = useState([]);
-  const [fridgeTempLogs, setFridgeTempLogs] = useState([]);
   const [activityLog, setActivityLog] = useState([]);
   const [tab, setTab] = useState("home");
   const [showWizard, setShowWizard] = useState(false);
@@ -111,12 +110,11 @@ export default function App() {
   }
 
   async function loadAll() {
-    let r, l, tempAll;
+    let r, l;
     try {
-      [r, l, tempAll] = await Promise.all([
+      [r, l] = await Promise.all([
         fetchAll("reagents", "expiry_date"),
         fetchAll("consumption_logs"),
-        fetchAll("fridge_temperature_logs", "date", false),
       ]);
     } catch (err) {
       setError("Could not connect to the database. Check Supabase settings.");
@@ -143,7 +141,6 @@ export default function App() {
     const namesFromReagents = (r || []).map((x) => x.fridge_name).filter(Boolean);
     const allNames = [...new Set([...BASE_FRIDGES, ...namesFromFridgeSheet, ...namesFromReagents])].sort();
     setFridgeNames([ROOM_TEMP, ...allNames]);
-    setFridgeTempLogs(tempAll || []);
   }
 
   async function logActivity(action, entity, description) {
@@ -494,7 +491,7 @@ export default function App() {
             onEditLog={setEditLog} onDeleteLog={deleteLog}
           />
         )}
-        {tab === "reports" && <Reports reagents={reagents} logs={logs} fridgeTempLogs={fridgeTempLogs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
+        {tab === "reports" && <Reports reagents={reagents} logs={logs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
         {tab === "settings" && (["admin","super","owner"].includes(role)) && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} fridgeNames={fridgeNames} reagents={reagents} logs={logs} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
         {tab === "fridges" && <FridgeInventory username={username} logActivity={logActivity} />}
         {tab === "charts" && (["admin","super","owner"].includes(role)) && <Charts reagents={reagents} logs={logs} />}
@@ -798,7 +795,7 @@ function firstOfMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
-function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeReagent, onPurgeLog }) {
+function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog }) {
   const [dateFrom, setDateFrom] = useState(firstOfMonth());
   const [dateTo, setDateTo] = useState(todayISO());
   const [searchInput, setSearchInput] = useState("");
@@ -806,6 +803,27 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
   const [deptFilter, setDeptFilter] = useState("");
   const [sortDir, setSortDir] = useState("newest"); // "newest" or "oldest"
   const [wasteOnly, setWasteOnly] = useState(false);
+  const [fridgeTempLogs, setFridgeTempLogs] = useState([]);
+
+  // Loaded only when Reports is actually opened (not on every app load) —
+  // this table can have thousands of rows and every other page doesn't
+  // need it at all.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { count } = await supabase.from("fridge_temperature_logs").select("*", { count: "exact", head: true });
+      const total = count || 0;
+      if (total === 0) return;
+      const pageSize = 1000;
+      const starts = [];
+      for (let from = 0; from < total; from += pageSize) starts.push(from);
+      const pages = await Promise.all(
+        starts.map((from) => supabase.from("fridge_temperature_logs").select("*").range(from, from + pageSize - 1))
+      );
+      if (!cancelled) setFridgeTempLogs(pages.flatMap((p) => p.data || []));
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Debounced search — waits until typing pauses before re-filtering the
   // (potentially thousands of) reagent rows, so typing itself stays smooth.
