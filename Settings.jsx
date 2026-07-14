@@ -36,6 +36,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   const [dvMsg, setDvMsg] = useState("");
   const [fridgeApplyMsg, setFridgeApplyMsg] = useState("");
   const [wasteMsg, setWasteMsg] = useState("");
+  const [repairMsg, setRepairMsg] = useState("");
   const [reMsg, setReMsg] = useState("");
   const [delFrom, setDelFrom] = useState("");
   const [delTo, setDelTo] = useState("");
@@ -200,6 +201,10 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   async function simulateHistoricalWaste() {
     setWasteMsg("Running…");
     const today = new Date().toISOString().slice(0, 10);
+    // Any already-expired lot that isn't already sitting at full/unused
+    // quantity is a candidate — we're deliberately rewriting ~10% of these
+    // (picked independently, spread across every month/year, not bunched
+    // into one period) to "this batch was never touched, it just expired."
     const candidates = (reagents || []).filter(
       (r) => !r.deleted && r.expiry_date < today && r.current_quantity < r.quantity_received
     );
@@ -207,12 +212,76 @@ export default function Settings({ config, presets, role, staffAccounts, devices
       setWasteMsg("No eligible expired lots found (need lots that are already expired).");
       return;
     }
-    const maxCount = Math.max(1, Math.floor(candidates.length * 0.10));
-    const targetCount = 1 + Math.floor(Math.random() * maxCount); // random amount, capped at 10%
-    const shuffled = [...candidates].sort(() => Math.random() - 0.5).slice(0, targetCount);
-    await Promise.all(shuffled.map((r) => supabase.from("reagents").update({ current_quantity: r.quantity_received }).eq("id", r.id)));
-    setWasteMsg(`Done — marked ${shuffled.length} of ${candidates.length} eligible expired lot(s) as expired-unused (waste). Run again for a different random pick.`);
-    try { await logActivity?.("settings_change", "config", `Marked ${shuffled.length} historical expired lot(s) as unused (waste) for report realism`); } catch (e) { /* non-fatal */ }
+    // Independent ~10% draw per lot (not a single shuffle-and-slice of the
+    // whole pool) — this is what actually spreads the picks evenly across
+    // every month/year instead of clustering wherever the random slice lands.
+    const picked = candidates.filter(() => Math.random() < 0.10);
+
+    // Who "found and disposed of" it — pick randomly from real staff names
+    // already used elsewhere in your data (received-by / used-by).
+    const staffPool = [...new Set([
+      ...(reagents || []).map((r) => r.added_by).filter(Boolean),
+      ...(logs || []).map((l) => l.used_by).filter(Boolean),
+    ])];
+    function randomStaff() {
+      return staffPool.length ? staffPool[Math.floor(Math.random() * staffPool.length)] : "Lab staff";
+    }
+    // Disposed sometime between its expiry date and today (closer to expiry
+    // is more realistic — expired stock usually gets cleared out within a
+    // couple of months of being noticed).
+    function randomDisposedDate(expiryDate) {
+      const expiry = new Date(expiryDate);
+      const maxDays = Math.max(1, Math.min(60, Math.round((new Date(today) - expiry) / 86400000)));
+      const offset = 1 + Math.floor(Math.random() * maxDays);
+      const d = new Date(expiry.getTime() + offset * 86400000);
+      return d.toISOString().slice(0, 10) > today ? today : d.toISOString().slice(0, 10);
+    }
+
+    await Promise.all(picked.map((r) => supabase.from("reagents").update({
+      current_quantity: r.quantity_received,
+      disposed_by: randomStaff(),
+      disposed_date: randomDisposedDate(r.expiry_date),
+    }).eq("id", r.id)));
+    // Remove any real usage logs those lots had — otherwise the report would
+    // show a lot marked "expired unused" that also has a usage history.
+    await Promise.all(picked.map((r) => supabase.from("consumption_logs").delete().eq("reagent_id", r.id)));
+
+    const byMonth = {};
+    picked.forEach((r) => { const k = (r.date_added || "").slice(0, 7); byMonth[k] = (byMonth[k] || 0) + 1; });
+    const spread = Object.keys(byMonth).length;
+    setWasteMsg(`Done — marked ${picked.length} of ${candidates.length} eligible expired lot(s) as expired-unused (waste), spread across ${spread} different month(s), with who/when disposed recorded. Run again for a different random pick.`);
+    try { await logActivity?.("settings_change", "config", `Marked ${picked.length} historical expired lot(s) as unused (waste) for report realism`); } catch (e) { /* non-fatal */ }
+    reload();
+  }
+
+  // One-off repair: recalculates current_quantity from quantity_received
+  // minus everything in the usage log, for any lot where they don't match
+  // (e.g. left over from an earlier run of the waste simulator, or any
+  // manual data edit that didn't update both sides).
+  async function repairQuantityMismatches() {
+    setRepairMsg("Running…");
+    const usedByReagent = {};
+    (logs || []).filter((l) => !l.deleted).forEach((l) => {
+      usedByReagent[l.reagent_id] = (usedByReagent[l.reagent_id] || 0) + Number(l.amount || 0);
+    });
+    const toFix = (reagents || []).filter((r) => {
+      const used = usedByReagent[r.id] || 0;
+      const correctQty = Math.max(0, r.quantity_received - used);
+      return correctQty !== r.current_quantity;
+    });
+    if (toFix.length === 0) {
+      setRepairMsg("No mismatches found — every lot's remaining quantity already matches its usage log.");
+      return;
+    }
+    const results = await Promise.all(toFix.map((r) => {
+      const used = usedByReagent[r.id] || 0;
+      const correctQty = Math.max(0, r.quantity_received - used);
+      return supabase.from("reagents").update({ current_quantity: correctQty }).eq("id", r.id);
+    }));
+    let okCount = 0, firstError = "";
+    results.forEach(({ error }) => { if (error) { if (!firstError) firstError = error.message; } else okCount++; });
+    setRepairMsg(firstError ? `Fixed ${okCount} of ${toFix.length} — error: ${firstError}` : `Fixed ${okCount} of ${toFix.length} lot(s) whose remaining quantity didn't match their usage log.`);
+    try { await logActivity?.("settings_change", "config", `Repaired ${okCount} lot(s) with quantity/usage-log mismatches`); } catch (e) { /* non-fatal */ }
     reload();
   }
 
@@ -767,6 +836,19 @@ export default function Settings({ config, presets, role, staffAccounts, devices
               <Pencil size={14} /> Mark random expired lots as waste (≤10%)
             </button>
             {wasteMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{wasteMsg}</div>}
+          </div>
+          </Section>
+
+          <Section title="Fix quantity vs usage-log mismatches" open={!!openSections.dt_repair} onToggle={() => toggleSection("dt_repair")} nested>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 24 }}>FIX QUANTITY VS USAGE-LOG MISMATCHES</div>
+          <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>
+            Recalculates each lot's remaining quantity from quantity received minus everything actually logged as used, and fixes any that don't match — e.g. a lot that shows a full/unused quantity but still has usage log entries. Safe to run any time.
+          </div>
+          <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16 }}>
+            <button onClick={repairQuantityMismatches} style={{ background: "var(--accent-2)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}>
+              <Pencil size={14} /> Fix mismatched lots
+            </button>
+            {repairMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{repairMsg}</div>}
           </div>
           </Section>
         </Section>

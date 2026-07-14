@@ -89,16 +89,19 @@ export default function Home({ counts, groups, reagents, logs, devices, username
   );
 
   const [expirySort, setExpirySort] = useState("soonest");
+  const [expiredWindowDays, setExpiredWindowDays] = useState(7);
   // Uses the same 30-day-auto-archived group list as Stock/Fridges/Devices:
   // an expired lot shows here for up to 30 days after expiry, then drops off
-  // the dashboard automatically (it always stays visible in Reports).
+  // the dashboard automatically (it always stays visible in Reports). The
+  // window dropdown further narrows this to "expired in the last N days"
+  // so the list doesn't just keep growing with old expired lots.
   const expired = useMemo(
     () => (groups || [])
-      .filter((g) => g.fefo && daysBetween(g.fefo.expiry_date, today) < 0)
+      .filter((g) => g.fefo && daysBetween(g.fefo.expiry_date, today) < 0 && daysBetween(g.fefo.expiry_date, today) >= -expiredWindowDays)
       .sort((a, b) => expirySort === "soonest"
         ? new Date(a.fefo.expiry_date) - new Date(b.fefo.expiry_date)
         : new Date(b.fefo.expiry_date) - new Date(a.fefo.expiry_date)),
-    [groups, today, expirySort]
+    [groups, today, expirySort, expiredWindowDays]
   );
   const expiringSoon = useMemo(
     () => (groups || [])
@@ -239,9 +242,19 @@ export default function Home({ counts, groups, reagents, logs, devices, username
         <div className="dash-card" style={cardStyle}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 10, flexWrap: "wrap" }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: "#DC2626" }}>Expired</div>
-            <button onClick={() => onNavigate("stock")} style={{ background: "none", border: "none", color: "var(--accent-1)", fontSize: 13, fontWeight: 600 }}>View all</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <select value={expiredWindowDays} onChange={(e) => setExpiredWindowDays(Number(e.target.value))} style={{ border: "1px solid #E5E7EB", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "#374151", fontWeight: 500 }}>
+                <option value={1}>Last 1 day</option>
+                <option value={2}>Last 2 days</option>
+                <option value={3}>Last 3 days</option>
+                <option value={7}>Last 7 days</option>
+                <option value={14}>Last 14 days</option>
+                <option value={30}>Last 30 days</option>
+              </select>
+              <button onClick={() => onNavigate("stock")} style={{ background: "none", border: "none", color: "var(--accent-1)", fontSize: 13, fontWeight: 600 }}>View all</button>
+            </div>
           </div>
-          <ExpiryTable rows={expired} today={today} criticalDays={criticalExpiryDays} onSelectGroup={onSelectGroup} emptyMsg="Nothing expired right now." />
+          <ExpiryTable rows={expired} today={today} criticalDays={criticalExpiryDays} onSelectGroup={onSelectGroup} emptyMsg={`Nothing expired in the last ${expiredWindowDays} day(s).`} />
         </div>
       </div>
 
@@ -298,7 +311,7 @@ export default function Home({ counts, groups, reagents, logs, devices, username
                       <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", borderBottom: "1px solid #F9FAFB" }}>{r.current_quantity} {r.unit}</td>
                       <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", borderBottom: "1px solid #F9FAFB" }}>{r.low_stock_threshold} {r.unit}</td>
                       <td style={{ padding: "12px 0", borderBottom: "1px solid #F9FAFB" }}>
-                        <span style={{ background: "#FDECEC", color: "#DC2626", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>Low</span>
+                        <span className="blink-soon" style={{ background: "#FDECEC", color: "#DC2626", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>Low</span>
                       </td>
                     </tr>
                   ))}
@@ -331,7 +344,7 @@ export default function Home({ counts, groups, reagents, logs, devices, username
                       <td style={{ padding: "12px 0", fontSize: 13.5, fontWeight: 600, color: "#111827", borderBottom: "1px solid #F9FAFB" }}>{r.name}</td>
                       <td style={{ padding: "12px 0", fontSize: 12.5, color: "#6B7280", borderBottom: "1px solid #F9FAFB" }}>0 / {r.quantity_received} {r.unit}</td>
                       <td style={{ padding: "12px 0", borderBottom: "1px solid #F9FAFB" }}>
-                        <span style={{ background: "#FDECEC", color: "#7C2D12", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>Out of stock</span>
+                        <span className="blink-expired" style={{ background: "#FDECEC", color: "#7C2D12", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>Out of stock</span>
                       </td>
                     </tr>
                   ))}

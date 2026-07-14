@@ -801,9 +801,18 @@ function firstOfMonth() {
 function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeReagent, onPurgeLog }) {
   const [dateFrom, setDateFrom] = useState(firstOfMonth());
   const [dateTo, setDateTo] = useState(todayISO());
+  const [searchInput, setSearchInput] = useState("");
   const [searchLot, setSearchLot] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
   const [sortDir, setSortDir] = useState("newest"); // "newest" or "oldest"
+  const [wasteOnly, setWasteOnly] = useState(false);
+
+  // Debounced search — waits until typing pauses before re-filtering the
+  // (potentially thousands of) reagent rows, so typing itself stays smooth.
+  React.useEffect(() => {
+    const t = setTimeout(() => setSearchLot(searchInput), 250);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   // Most recent temperature reading logged for a fridge on/before a given date
   // (falls back to the most recent reading overall if none exist before it).
@@ -834,8 +843,16 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
           || (r.fridge_name || "").toLowerCase().includes(term)
         : r.date_added >= dateFrom && r.date_added <= dateTo))
       .filter((r) => (deptFilter ? r.department === deptFilter : true))
+      .filter((r) => (wasteOnly ? !!r.disposed_by : true))
       .sort((a, b) => sortDir === "oldest" ? new Date(a.date_added) - new Date(b.date_added) : new Date(b.date_added) - new Date(a.date_added));
-  }, [reagents, searchLot, dateFrom, dateTo, deptFilter, sortDir]);
+  }, [reagents, searchLot, dateFrom, dateTo, deptFilter, sortDir, wasteOnly]);
+
+  // Every lot number currently flagged as disposed-of waste — for a quick
+  // scan without opening each card individually.
+  const wasteLotNumbers = useMemo(
+    () => reagents.filter((r) => !r.deleted && r.disposed_by).map((r) => r.lot_number).sort(),
+    [reagents]
+  );
 
   function logsFor(reagentId) {
     return logs.filter((l) => l.reagent_id === reagentId && !l.deleted).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -848,7 +865,7 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
       "Reagent","Department","Type","Device","Fridge","Fridge Temp (°C)","Lot Number",
       "Received By","Received Date","Expiry Date","Qty Received","Qty Remaining","Unit",
       "Intact Container","Complete Components","Expiration Validity","Lot Matches Kit","Storage Condition",
-      "Receiving Note","Inspection Note","Expired Disposition",
+      "Receiving Note","Inspection Note","Expired Disposition","Disposed By","Disposed Date",
       "Consumption Date","Amount Used","Used By","Tested by QC",
     ];
 
@@ -869,6 +886,7 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
         "Expiration Validity": r.expiration_validity ? "Yes" : "No", "Lot Matches Kit": r.lot_matches_kit ? "Yes" : "No",
         "Storage Condition": r.storage_condition_ok ? "Yes" : "No", "Receiving Note": r.receiving_notes || "",
         "Inspection Note": r.inspection_notes || "", "Expired Disposition": expiredDisposition(r)?.label.replace("⚠ ", "") || "",
+        "Disposed By": r.disposed_by || "", "Disposed Date": r.disposed_date || "",
       };
       if (rLogs.length === 0) {
         rows.push({ ...base, "Consumption Date": "", "Amount Used": "", "Used By": "", "Tested by QC": "", __year: year, __month: month });
@@ -926,8 +944,8 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
         </div>
         <input
           placeholder="Search by test name, device, fridge, or lot number…"
-          value={searchLot}
-          onChange={(e) => setSearchLot(e.target.value)}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
           style={{ border: "1px solid #C7D1CE", borderRadius: 6, padding: "7px 10px", fontSize: 13, flex: 1, minWidth: 180 }}
         />
         <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} style={{ border: "1px solid #C7D1CE", borderRadius: 6, padding: "7px 10px", fontSize: 13 }}>
@@ -940,8 +958,20 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
         >
           {sortDir === "newest" ? "Newest first ↓" : "Oldest first ↑"}
         </button>
+        <button
+          onClick={() => setWasteOnly((v) => !v)}
+          style={{ border: wasteOnly ? "1px solid #8A2E1F" : "1px solid #C7D1CE", borderRadius: 6, padding: "7px 10px", fontSize: 13, fontWeight: 600, background: wasteOnly ? "#FBEAE6" : "#fff", color: wasteOnly ? "#8A2E1F" : "#516361" }}
+        >
+          ⚠ Waste only {wasteOnly ? "✓" : ""}
+        </button>
       </div>
-      {searchLot.trim() && <div style={{ fontSize: 12, color: "#8A9694", marginBottom: 10 }}>Searching — date filter is ignored while searching.</div>}
+      {searchInput.trim() && <div style={{ fontSize: 12, color: "#8A9694", marginBottom: 10 }}>Searching — date filter is ignored while searching.</div>}
+
+      {wasteLotNumbers.length > 0 && (
+        <div className="no-print" style={{ background: "#FBEAE6", border: "1px solid #C1432B33", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12.5, color: "#8A2E1F" }}>
+          <b>{wasteLotNumbers.length} disposed / wasted lot number(s):</b> {wasteLotNumbers.join(", ")}
+        </div>
+      )}
 
       {matchedLots.length === 0 && (
         <div style={{ textAlign: "center", padding: "60px 20px", color: "#8A9694", fontSize: 13.5 }}>No records match this filter.</div>
@@ -976,6 +1006,9 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
                 <div><div style={{ color: "#8A9694", fontSize: 10.5, textTransform: "uppercase" }}>Quantity</div>{r.current_quantity}/{r.quantity_received} {r.unit}</div>
                 {r.fridge_name && (
                   <div><div style={{ color: "#8A9694", fontSize: 10.5, textTransform: "uppercase" }}>Fridge</div>{r.fridge_name}{temp ? ` (${temp.temperature}°C)` : ""}</div>
+                )}
+                {r.disposed_by && (
+                  <div><div style={{ color: "#8A9694", fontSize: 10.5, textTransform: "uppercase" }}>Disposed by</div>{r.disposed_by}{r.disposed_date ? ` on ${r.disposed_date}` : ""}</div>
                 )}
               </div>
 

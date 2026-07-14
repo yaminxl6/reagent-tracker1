@@ -54,3 +54,8 @@ update reagent_presets set default_fridge_name = 'R0008'
 alter table app_config add column if not exists critical_expiry_days integer not null default 3;
 alter table app_config add column if not exists archive_grace_days integer not null default 30;
 
+-- 5) Who disposed of an expired-unused (wasted) lot, and when — shown on
+-- the report for any lot flagged "expired unused — disposed of (waste)".
+alter table reagents add column if not exists disposed_by text not null default '';
+alter table reagents add column if not exists disposed_date date;
+
