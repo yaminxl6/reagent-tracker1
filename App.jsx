@@ -847,13 +847,6 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
       .sort((a, b) => sortDir === "oldest" ? new Date(a.date_added) - new Date(b.date_added) : new Date(b.date_added) - new Date(a.date_added));
   }, [reagents, searchLot, dateFrom, dateTo, deptFilter, sortDir, wasteOnly]);
 
-  // Every lot number currently flagged as disposed-of waste — for a quick
-  // scan without opening each card individually.
-  const wasteLotNumbers = useMemo(
-    () => reagents.filter((r) => !r.deleted && r.disposed_by).map((r) => r.lot_number).sort(),
-    [reagents]
-  );
-
   function logsFor(reagentId) {
     return logs.filter((l) => l.reagent_id === reagentId && !l.deleted).sort((a, b) => new Date(b.date) - new Date(a.date));
   }
@@ -966,12 +959,6 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
         </button>
       </div>
       {searchInput.trim() && <div style={{ fontSize: 12, color: "#8A9694", marginBottom: 10 }}>Searching — date filter is ignored while searching.</div>}
-
-      {wasteLotNumbers.length > 0 && (
-        <div className="no-print" style={{ background: "#F7EEEA", border: "1px solid #A16A5633", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12.5, color: "#A16A56" }}>
-          <b>{wasteLotNumbers.length} disposed / wasted lot number(s):</b> {wasteLotNumbers.join(", ")}
-        </div>
-      )}
 
       {matchedLots.length === 0 && (
         <div style={{ textAlign: "center", padding: "60px 20px", color: "#8A9694", fontSize: 13.5 }}>No records match this filter.</div>
