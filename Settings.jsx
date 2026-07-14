@@ -42,6 +42,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   const [delTo, setDelTo] = useState("");
   const [delMsg, setDelMsg] = useState("");
   const departments = config.departments || [];
+  const canRevealPasswords = ["super","owner"].includes(role);
   const [newPreset, setNewPreset] = useState({ name: "", department: departments[0] || "", unit: "mL" });
   const [newDept, setNewDept] = useState("");
   const [newDevice, setNewDevice] = useState({ name: "", department: departments[0] || "", default_fridge_name: "" });
@@ -545,7 +546,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
       </div>
       </Section>
 
-      {["super","owner"].includes(role) && (
+      {["admin","super","owner"].includes(role) && (
         <Section title="Employee Accounts" open={!!openSections.employees} onToggle={() => toggleSection("employees")}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3 }}>EMPLOYEE ACCOUNTS</div>
           <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>
@@ -567,7 +568,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
               />
               <input
                 placeholder="Password (e.g. employee number)"
-                type={showPasswords ? "text" : "password"}
+                type={(showPasswords && canRevealPasswords) ? "text" : "password"}
                 value={newStaff.password}
                 onChange={(e) => setNewStaff((s) => ({ ...s, password: e.target.value }))}
                 style={{ ...inputStyle, flex: 1, minWidth: 140, marginTop: 0 }}
@@ -607,27 +608,29 @@ export default function Settings({ config, presets, role, staffAccounts, devices
       <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", gap: 10 }}>
           <label style={{ ...labelStyle, flex: 1 }}>Shared staff username<input style={inputStyle} value={creds.lab_username} onChange={(e) => setCreds((c) => ({ ...c, lab_username: e.target.value }))} /></label>
-          <label style={{ ...labelStyle, flex: 1 }}>Shared staff password<input type={showPasswords ? "text" : "password"} style={inputStyle} value={creds.lab_password} onChange={(e) => setCreds((c) => ({ ...c, lab_password: e.target.value }))} /></label>
+          <label style={{ ...labelStyle, flex: 1 }}>Shared staff password<input type={(showPasswords && canRevealPasswords) ? "text" : "password"} style={inputStyle} value={creds.lab_password} onChange={(e) => setCreds((c) => ({ ...c, lab_password: e.target.value }))} /></label>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <label style={{ ...labelStyle, flex: 1 }}>Your (admin) username<input style={inputStyle} value={creds.admin_username} onChange={(e) => setCreds((c) => ({ ...c, admin_username: e.target.value }))} /></label>
-          <label style={{ ...labelStyle, flex: 1 }}>Your (admin) password<input type={showPasswords ? "text" : "password"} style={inputStyle} value={creds.admin_password} onChange={(e) => setCreds((c) => ({ ...c, admin_password: e.target.value }))} /></label>
+          <label style={{ ...labelStyle, flex: 1 }}>Your (admin) password<input type={(showPasswords && canRevealPasswords) ? "text" : "password"} style={inputStyle} value={creds.admin_password} onChange={(e) => setCreds((c) => ({ ...c, admin_password: e.target.value }))} /></label>
         </div>
         {["super","owner"].includes(role) && (
           <div style={{ display: "flex", gap: 10 }}>
             <label style={{ ...labelStyle, flex: 1 }}>Super-user username<input style={inputStyle} value={creds.super_username} onChange={(e) => setCreds((c) => ({ ...c, super_username: e.target.value }))} /></label>
-            <label style={{ ...labelStyle, flex: 1 }}>Super-user password<input type={showPasswords ? "text" : "password"} style={inputStyle} value={creds.super_password} onChange={(e) => setCreds((c) => ({ ...c, super_password: e.target.value }))} /></label>
+            <label style={{ ...labelStyle, flex: 1 }}>Super-user password<input type={(showPasswords && canRevealPasswords) ? "text" : "password"} style={inputStyle} value={creds.super_password} onChange={(e) => setCreds((c) => ({ ...c, super_password: e.target.value }))} /></label>
           </div>
         )}
         {role === "owner" && (
           <div style={{ display: "flex", gap: 10 }}>
             <label style={{ ...labelStyle, flex: 1 }}>Owner username<input style={inputStyle} value={creds.owner_username} onChange={(e) => setCreds((c) => ({ ...c, owner_username: e.target.value }))} /></label>
-            <label style={{ ...labelStyle, flex: 1 }}>Owner password<input type={showPasswords ? "text" : "password"} style={inputStyle} value={creds.owner_password} onChange={(e) => setCreds((c) => ({ ...c, owner_password: e.target.value }))} /></label>
+            <label style={{ ...labelStyle, flex: 1 }}>Owner password<input type={(showPasswords && canRevealPasswords) ? "text" : "password"} style={inputStyle} value={creds.owner_password} onChange={(e) => setCreds((c) => ({ ...c, owner_password: e.target.value }))} /></label>
           </div>
         )}
-        <button type="button" onClick={() => setShowPasswords((v) => !v)} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "#0F7173", fontSize: 12, fontWeight: 600, padding: 0, display: "flex", alignItems: "center", gap: 5 }}>
-          {showPasswords ? <EyeOff size={13} /> : <Eye size={13} />} {showPasswords ? "Hide passwords" : "Show passwords"}
-        </button>
+        {canRevealPasswords && (
+          <button type="button" onClick={() => setShowPasswords((v) => !v)} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "#0F7173", fontSize: 12, fontWeight: 600, padding: 0, display: "flex", alignItems: "center", gap: 5 }}>
+            {showPasswords ? <EyeOff size={13} /> : <Eye size={13} />} {showPasswords ? "Hide passwords" : "Show passwords"}
+          </button>
+        )}
         <label style={labelStyle}>Default low-stock alert (% of quantity received)
           <input type="number" style={inputStyle} value={creds.low_stock_default_percent} onChange={(e) => setCreds((c) => ({ ...c, low_stock_default_percent: Number(e.target.value) }))} />
         </label>
@@ -692,8 +695,9 @@ export default function Settings({ config, presets, role, staffAccounts, devices
       </div>
       </Section>
 
-      {["super","owner"].includes(role) && (
+      {["admin","super","owner"].includes(role) && (
         <Section title="Data Tools & Corrections" open={!!openSections.datatools} onToggle={() => toggleSection("datatools")}>
+          {["super","owner"].includes(role) && (
           <Section title="Bulk delete test data" open={!!openSections.dt_delete} onToggle={() => toggleSection("dt_delete")} nested>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 30 }}>DATA TOOLS</div>
           <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Bulk-delete reagent lots and usage logs — useful for clearing out test data. Filter by device, test/item name, and/or date range, review the count, then confirm.</div>
@@ -724,6 +728,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
             {delMsg && <div style={{ fontSize: 12.5, color: "#516361", marginTop: 8 }}>{delMsg}</div>}
           </div>
           </Section>
+          )}
           <Section title="Reassign employee" open={!!openSections.dt_reassign} onToggle={() => toggleSection("dt_reassign")} nested>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3, marginTop: 24 }}>REASSIGN EMPLOYEE</div>
           <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>Fix a wrong name on past records without deleting anything — e.g. something was logged under the wrong employee for a period. Renames both "received by" and "used by" entries that match.</div>
