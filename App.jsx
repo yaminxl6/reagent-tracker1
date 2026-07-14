@@ -827,9 +827,9 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
   function expiredDisposition(r) {
     if (r.expiry_date >= todayISO()) return null;
     const usedFraction = r.quantity_received > 0 ? (r.quantity_received - r.current_quantity) / r.quantity_received : 0;
-    if (usedFraction >= 0.95 || r.current_quantity <= 0) return { label: "Expired — fully used", color: "#2F6B4F", bg: "#E8F2EC" };
-    if (usedFraction < 0.05) return { label: "⚠ Expired unused — disposed of (waste)", color: "#8A2E1F", bg: "#FBEAE6" };
-    return { label: "Expired — partially used, remainder disposed", color: "#B8860B", bg: "#FBF3DF" };
+    if (usedFraction >= 0.95 || r.current_quantity <= 0) return { label: "Expired — fully used", color: "#4B7A63", bg: "#EEF5F1" };
+    if (usedFraction < 0.05) return { label: "Expired unused — disposed of", color: "#A16A56", bg: "#F7EEEA" };
+    return { label: "Expired — partially used, remainder disposed", color: "#A38A47", bg: "#F7F2E6" };
   }
 
   const matchedLots = useMemo(() => {
@@ -960,7 +960,7 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
         </button>
         <button
           onClick={() => setWasteOnly((v) => !v)}
-          style={{ border: wasteOnly ? "1px solid #8A2E1F" : "1px solid #C7D1CE", borderRadius: 6, padding: "7px 10px", fontSize: 13, fontWeight: 600, background: wasteOnly ? "#FBEAE6" : "#fff", color: wasteOnly ? "#8A2E1F" : "#516361" }}
+          style={{ border: wasteOnly ? "1px solid #A16A56" : "1px solid #C7D1CE", borderRadius: 6, padding: "7px 10px", fontSize: 13, fontWeight: 600, background: wasteOnly ? "#F7EEEA" : "#fff", color: wasteOnly ? "#A16A56" : "#516361" }}
         >
           ⚠ Waste only {wasteOnly ? "✓" : ""}
         </button>
@@ -968,7 +968,7 @@ function Reports({ reagents, logs, fridgeTempLogs, departments, role, onPurgeRea
       {searchInput.trim() && <div style={{ fontSize: 12, color: "#8A9694", marginBottom: 10 }}>Searching — date filter is ignored while searching.</div>}
 
       {wasteLotNumbers.length > 0 && (
-        <div className="no-print" style={{ background: "#FBEAE6", border: "1px solid #C1432B33", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12.5, color: "#8A2E1F" }}>
+        <div className="no-print" style={{ background: "#F7EEEA", border: "1px solid #A16A5633", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12.5, color: "#A16A56" }}>
           <b>{wasteLotNumbers.length} disposed / wasted lot number(s):</b> {wasteLotNumbers.join(", ")}
         </div>
       )}
