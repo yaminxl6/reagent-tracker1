@@ -713,10 +713,10 @@ export default function Settings({ config, presets, role, staffAccounts, devices
                 <input style={inputStyle} value={delItem} onChange={(e) => setDelItem(e.target.value)} placeholder="e.g. HCV" />
               </label>
               <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>From date
-                <input type="date" style={inputStyle} value={delFrom} onChange={(e) => setDelFrom(e.target.value)} />
+                <input type="date" lang="en-US" dir="ltr" style={inputStyle} value={delFrom} onChange={(e) => setDelFrom(e.target.value)} />
               </label>
               <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>To date
-                <input type="date" style={inputStyle} value={delTo} onChange={(e) => setDelTo(e.target.value)} />
+                <input type="date" lang="en-US" dir="ltr" style={inputStyle} value={delTo} onChange={(e) => setDelTo(e.target.value)} />
               </label>
             </div>
             <div style={{ fontSize: 12.5, color: "#516361", marginBottom: 10 }}>
@@ -744,10 +744,10 @@ export default function Settings({ config, presets, role, staffAccounts, devices
                 <input style={inputStyle} value={reNewStaff} onChange={(e) => setReNewStaff(e.target.value)} placeholder="Correct name" />
               </label>
               <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>From date
-                <input type="date" style={inputStyle} value={reFrom} onChange={(e) => setReFrom(e.target.value)} />
+                <input type="date" lang="en-US" dir="ltr" style={inputStyle} value={reFrom} onChange={(e) => setReFrom(e.target.value)} />
               </label>
               <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>To date
-                <input type="date" style={inputStyle} value={reTo} onChange={(e) => setReTo(e.target.value)} />
+                <input type="date" lang="en-US" dir="ltr" style={inputStyle} value={reTo} onChange={(e) => setReTo(e.target.value)} />
               </label>
             </div>
             <div style={{ fontSize: 12.5, color: "#516361", marginBottom: 10 }}>
@@ -774,10 +774,10 @@ export default function Settings({ config, presets, role, staffAccounts, devices
                 <input style={inputStyle} value={tnNewItem} onChange={(e) => setTnNewItem(e.target.value)} placeholder="Correct test name" />
               </label>
               <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>From date
-                <input type="date" style={inputStyle} value={tnFrom} onChange={(e) => setTnFrom(e.target.value)} />
+                <input type="date" lang="en-US" dir="ltr" style={inputStyle} value={tnFrom} onChange={(e) => setTnFrom(e.target.value)} />
               </label>
               <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>To date
-                <input type="date" style={inputStyle} value={tnTo} onChange={(e) => setTnTo(e.target.value)} />
+                <input type="date" lang="en-US" dir="ltr" style={inputStyle} value={tnTo} onChange={(e) => setTnTo(e.target.value)} />
               </label>
             </div>
             <div style={{ fontSize: 12.5, color: "#516361", marginBottom: 10 }}>
@@ -815,10 +815,10 @@ export default function Settings({ config, presets, role, staffAccounts, devices
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
               <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>From date
-                <input type="date" style={inputStyle} value={dvFrom} onChange={(e) => setDvFrom(e.target.value)} />
+                <input type="date" lang="en-US" dir="ltr" style={inputStyle} value={dvFrom} onChange={(e) => setDvFrom(e.target.value)} />
               </label>
               <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>To date
-                <input type="date" style={inputStyle} value={dvTo} onChange={(e) => setDvTo(e.target.value)} />
+                <input type="date" lang="en-US" dir="ltr" style={inputStyle} value={dvTo} onChange={(e) => setDvTo(e.target.value)} />
               </label>
             </div>
             <div style={{ fontSize: 12.5, color: "#516361", marginBottom: 10 }}>

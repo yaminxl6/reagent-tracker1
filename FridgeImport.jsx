@@ -81,7 +81,7 @@ export default function FridgeImport({ onApply }) {
                 <input value={r.item_name} onChange={(e) => updateRow(i, "item_name", e.target.value)} style={{ ...inputStyle, flex: 1 }} placeholder="Item" />
                 <input value={r.lot_number} onChange={(e) => updateRow(i, "lot_number", e.target.value)} style={{ ...inputStyle, width: 90 }} placeholder="Lot" />
                 <input value={r.quantity} onChange={(e) => updateRow(i, "quantity", e.target.value)} style={{ ...inputStyle, width: 55 }} placeholder="Qty" />
-                <input type="date" value={r.expiry_date || ""} onChange={(e) => updateRow(i, "expiry_date", e.target.value)} style={{ ...inputStyle, width: 130 }} />
+                <input type="date" lang="en-US" dir="ltr" value={r.expiry_date || ""} onChange={(e) => updateRow(i, "expiry_date", e.target.value)} style={{ ...inputStyle, width: 130 }} />
               </div>
             ))}
           </div>

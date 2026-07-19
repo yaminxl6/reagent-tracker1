@@ -86,9 +86,9 @@ export default function Charts({ reagents, logs }) {
           </datalist>
         </label>
         <span style={{ fontSize: 12, color: "#7B8E8A" }}>From</span>
-        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={inputStyle} />
+        <input type="date" lang="en-US" dir="ltr" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={inputStyle} />
         <span style={{ fontSize: 12, color: "#7B8E8A" }}>To</span>
-        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={inputStyle} />
+        <input type="date" lang="en-US" dir="ltr" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={inputStyle} />
       </div>
 
       {lotsForReagent.length === 0 ? (

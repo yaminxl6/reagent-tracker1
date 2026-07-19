@@ -241,7 +241,7 @@ export default function FridgeInventory({ username, logActivity }) {
                         <input style={{ ...cellInputStyle, textAlign: "center" }} value={r.quantity} onChange={(e) => updateRow(r.id, "quantity", e.target.value)} placeholder="e.g. 1½" />
                       </td>
                       <td style={tdStyle}>
-                        <input type="date" style={cellInputStyle} value={r.expiry_date || ""} onChange={(e) => updateRow(r.id, "expiry_date", e.target.value)} />
+                        <input type="date" lang="en-US" dir="ltr" style={cellInputStyle} value={r.expiry_date || ""} onChange={(e) => updateRow(r.id, "expiry_date", e.target.value)} />
                       </td>
                       <td className="no-print" style={{ ...tdStyle, textAlign: "center" }}>
                         <button onClick={() => deleteRow(r.id)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={13} /></button>
@@ -308,7 +308,7 @@ function TemperatureLog({ fridgeName, logs, username, onAdded }) {
         </button>
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginTop: 10, flexWrap: "wrap" }}>
-        <label style={labelStyle}>Date<input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} /></label>
+        <label style={labelStyle}>Date<input type="date" lang="en-US" dir="ltr" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} /></label>
         <label style={labelStyle}>Temp (°C)<input type="number" step="0.1" style={{ ...inputStyle, width: 90 }} value={temperature} onChange={(e) => setTemperature(e.target.value)} /></label>
         <button onClick={submit} style={{ background: "var(--accent-1)", color: "#fff", border: "none", borderRadius: 7, padding: "8px 14px", fontSize: 13, fontWeight: 700 }}>+ Log reading</button>
       </div>

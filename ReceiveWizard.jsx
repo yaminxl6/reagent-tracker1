@@ -142,7 +142,7 @@ export default function ReceiveWizard({ presets, devices, fridgeNames, role, dep
               </select>
             </label>
             <label style={labelStyle}>Received by (your name)<input style={inputStyle} value={form.receivedBy} onChange={set("receivedBy")} /></label>
-            <label style={labelStyle}>Date of receipt<input type="date" style={inputStyle} value={form.receivedDate} onChange={set("receivedDate")} /></label>
+            <label style={labelStyle}>Date of receipt<input type="date" lang="en-US" dir="ltr" style={inputStyle} value={form.receivedDate} onChange={set("receivedDate")} /></label>
             <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
               <label style={{ ...labelStyle, flex: 1 }}>Lot number<input style={inputStyle} value={form.lotNumber} onChange={set("lotNumber")} /></label>
               <button type="button" onClick={() => setShowScanner(true)} style={{ background: "#F0F3F2", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 10px" }}>
@@ -150,7 +150,7 @@ export default function ReceiveWizard({ presets, devices, fridgeNames, role, dep
               </button>
               <label style={{ ...labelStyle, width: 80 }}>Unit<input style={inputStyle} value={form.unit} onChange={set("unit")} /></label>
             </div>
-            <label style={labelStyle}>Expiry date<input type="date" style={inputStyle} value={form.expiryDate} onChange={set("expiryDate")} /></label>
+            <label style={labelStyle}>Expiry date<input type="date" lang="en-US" dir="ltr" style={inputStyle} value={form.expiryDate} onChange={set("expiryDate")} /></label>
             <div style={{ display: "flex", gap: 10 }}>
               <label style={{ ...labelStyle, flex: 1 }}>Quantity received<input type="number" style={inputStyle} value={form.quantityReceived} onChange={set("quantityReceived")} /></label>
               <label style={{ ...labelStyle, flex: 1 }}>Low stock alert below<input type="number" style={inputStyle} value={form.lowStockThreshold} onChange={set("lowStockThreshold")} placeholder="auto" /></label>

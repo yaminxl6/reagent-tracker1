@@ -93,7 +93,7 @@ export default function ReagentImport({ departments, onApply }) {
                 <input value={r.lotNumber} onChange={(e) => updateRow(i, "lotNumber", e.target.value)} style={{ ...inputStyle, width: 80 }} placeholder="Lot" />
                 <input value={r.unit} onChange={(e) => updateRow(i, "unit", e.target.value)} style={{ ...inputStyle, width: 55 }} placeholder="Unit" />
                 <input type="number" value={r.quantityReceived} onChange={(e) => updateRow(i, "quantityReceived", e.target.value)} style={{ ...inputStyle, width: 65 }} placeholder="Qty" />
-                <input type="date" value={r.expiryDate} onChange={(e) => updateRow(i, "expiryDate", e.target.value)} style={{ ...inputStyle, width: 115 }} />
+                <input type="date" lang="en-US" dir="ltr" value={r.expiryDate} onChange={(e) => updateRow(i, "expiryDate", e.target.value)} style={{ ...inputStyle, width: 115 }} />
                 <input value={r.receivedBy} onChange={(e) => updateRow(i, "receivedBy", e.target.value)} style={{ ...inputStyle, width: 90 }} placeholder="Received by" />
                 <button onClick={() => removeRow(i)} style={{ background: "none", border: "none", color: "#C1432B" }}><X size={14} /></button>
               </div>
