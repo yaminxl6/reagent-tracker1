@@ -32,13 +32,6 @@ export default function FridgeInventory({ username, logActivity }) {
   const [saveMsg, setSaveMsg] = useState("");
   const [deletedIds, setDeletedIds] = useState([]);
   const [tempLogs, setTempLogs] = useState([]);
-  const [liveStock, setLiveStock] = useState([]);
-
-  async function loadLiveStock(fridgeName) {
-    if (!fridgeName) { setLiveStock([]); return; }
-    const { data } = await supabase.from("reagents").select("*").eq("fridge_name", fridgeName).eq("deleted", false).order("name");
-    setLiveStock((data || []).filter((r) => r.current_quantity > 0));
-  }
 
   async function loadAll() {
     const { data } = await supabase.from("fridge_inventory").select("*").order("row_order");
@@ -51,7 +44,6 @@ export default function FridgeInventory({ username, logActivity }) {
     setTempLogs(data || []);
   }
   useEffect(() => { loadAll(); loadTemps(); }, []);
-  useEffect(() => { loadLiveStock(refrigeratorName); }, [refrigeratorName]);
 
   // Opening a fridge for a month that has no count yet: carry forward the
   // most recent prior month's items as a starting point, so staff only
@@ -251,7 +243,6 @@ export default function FridgeInventory({ username, logActivity }) {
             }}
           />
 
-          <LiveStockPanel stock={liveStock} />
 
           <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #C7D1CE" }}>
             <thead>
@@ -317,53 +308,6 @@ export default function FridgeInventory({ username, logActivity }) {
             </button>
           </div>
         </div>
-      )}
-    </div>
-  );
-}
-
-// Real current stock — pulled live from the reagents table (what's actually
-// received and not yet used up), linked via each lot's fridge_name. This is
-// separate from the manual monthly count below, which matches the paper form.
-function LiveStockPanel({ stock }) {
-  const [open, setOpen] = useState(true);
-  return (
-    <div className="no-print" style={{ border: "1px solid #E1E8E5", borderRadius: 8, padding: "10px 12px", marginBottom: 14, background: "#EAF6F4" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ fontSize: 13, fontWeight: 700 }}>Current stock actually in this fridge ({stock.length} lot(s), live from device records)</div>
-        <button onClick={() => setOpen((o) => !o)} style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 600 }}>
-          {open ? "Hide" : "Show"}
-        </button>
-      </div>
-      {open && (
-        stock.length === 0 ? (
-          <div style={{ fontSize: 12.5, color: "#8A9694", marginTop: 8 }}>No active lots currently linked to this fridge.</div>
-        ) : (
-          <div style={{ marginTop: 10, maxHeight: 260, overflowY: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <th style={thStyleSmall}>Reagent</th>
-                  <th style={thStyleSmall}>Lot</th>
-                  <th style={thStyleSmall}>Device</th>
-                  <th style={thStyleSmall}>Qty left</th>
-                  <th style={thStyleSmall}>Expiry</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stock.map((r) => (
-                  <tr key={r.id}>
-                    <td style={tdStyleSmall}>{r.name}</td>
-                    <td style={tdStyleSmall}>{r.lot_number}</td>
-                    <td style={tdStyleSmall}>{r.device || "—"}</td>
-                    <td style={tdStyleSmall}>{r.current_quantity} {r.unit}</td>
-                    <td style={tdStyleSmall}>{r.expiry_date}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
       )}
     </div>
   );
