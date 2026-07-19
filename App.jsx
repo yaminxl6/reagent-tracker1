@@ -500,13 +500,13 @@ export default function App() {
         </div>
       </div>
 
-      {showWizard && <ReceiveWizard presets={presets} devices={devices} fridgeNames={fridgeNames} role={role} departments={config.departments || []} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
+      {showWizard && <ReceiveWizard presets={presets} devices={devices} fridgeNames={fridgeNames} role={role} departments={config.departments || []} username={username} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
       {showImport && (
         <Modal title="Bulk import reagents" onClose={() => setShowImport(false)}>
           <ReagentImport departments={config.departments || []} onApply={bulkReceive} />
         </Modal>
       )}
-      {showLog && <LogConsumptionModal reagents={reagents.filter((r) => !r.deleted)} onClose={() => setShowLog(false)} onSubmit={recordConsumption} />}
+      {showLog && <LogConsumptionModal reagents={reagents.filter((r) => !r.deleted)} username={username} onClose={() => setShowLog(false)} onSubmit={recordConsumption} />}
       {editReagent && <EditReagentModal reagent={editReagent} onClose={() => setEditReagent(null)} onSave={saveEditedReagent} />}
       {editLog && <EditLogModal log={editLog} onClose={() => setEditLog(null)} onSave={saveEditedLog} />}
       {error && <div style={{ position: "fixed", bottom: 16, left: "50%", transform: "translateX(-50%)", background: "#C1432B", color: "#fff", padding: "10px 18px", borderRadius: 8, fontSize: 14 }}>{error}</div>}
@@ -1140,14 +1140,14 @@ function Modal({ title, onClose, children }) {
 const inputStyle = { width: "100%", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 11px", fontSize: 14, marginTop: 4, boxSizing: "border-box" };
 const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
 
-function LogConsumptionModal({ reagents, onClose, onSubmit }) {
+function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
   const [typeFilter, setTypeFilter] = useState("");
   const filteredReagents = typeFilter ? reagents.filter((r) => r.item_type === typeFilter) : reagents;
   const names = [...new Set(filteredReagents.map((r) => r.name))];
   const [name, setName] = useState(names[0] || "");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayISO());
-  const [usedBy, setUsedBy] = useState("");
+  const [usedBy, setUsedBy] = useState(username || "");
   const [note, setNote] = useState("");
   const [testedByQC, setTestedByQC] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
@@ -1204,7 +1204,7 @@ function LogConsumptionModal({ reagents, onClose, onSubmit }) {
           <label style={{ ...labelStyle, flex: 1 }}>Amount used ({fefo?.unit || "unit"})<input type="number" style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
           <label style={{ ...labelStyle, flex: 1 }}>Date<input type="date" lang="en-US" dir="ltr" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} /></label>
         </div>
-        <label style={labelStyle}>Used by<input style={inputStyle} value={usedBy} onChange={(e) => setUsedBy(e.target.value)} placeholder="Your name" /></label>
+        <label style={labelStyle}>Used by (signed in as)<input style={{ ...inputStyle, background: "#F0F3F2", color: "#516361" }} value={usedBy} readOnly /></label>
         <label style={labelStyle}>Note (optional)<input style={inputStyle} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. daily QC run" /></label>
         <YesNoRow label="Tested by QC" value={testedByQC} onChange={setTestedByQC} />
         <button onClick={submit} style={{ marginTop: 6, background: "#0F7173", color: "#fff", border: "none", borderRadius: 8, padding: "11px", fontWeight: 700, fontSize: 14 }}>Save log</button>
