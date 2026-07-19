@@ -34,8 +34,15 @@ export default function FridgeInventory({ username, logActivity }) {
   const [tempLogs, setTempLogs] = useState([]);
 
   async function loadAll() {
-    const { data } = await supabase.from("fridge_inventory").select("*").order("row_order");
-    setAll(data || []);
+    const pageSize = 1000;
+    const { count } = await supabase.from("fridge_inventory").select("*", { count: "exact", head: true });
+    const total = count || 0;
+    const starts = [];
+    for (let from = 0; from < total; from += pageSize) starts.push(from);
+    const pages = await Promise.all(
+      starts.map((from) => supabase.from("fridge_inventory").select("*").order("row_order").range(from, from + pageSize - 1))
+    );
+    setAll(pages.flatMap((p) => p.data || []));
     setDirty(false);
     setDeletedIds([]);
   }
