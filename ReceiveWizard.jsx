@@ -15,14 +15,14 @@ const INSPECTION_ITEMS = [
 const inputStyle = { width: "100%", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 11px", fontSize: 14, marginTop: 4, boxSizing: "border-box" };
 const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
 
-export default function ReceiveWizard({ presets, devices, fridgeNames, role, departments, username, onClose, onSubmit }) {
+export default function ReceiveWizard({ presets, devices, fridgeNames, role, departments, onClose, onSubmit }) {
   const [step, setStep] = useState(1);
   const [showScanner, setShowScanner] = useState(false);
 
   const [form, setForm] = useState({
     name: "", department: departments[0] || "", unit: "mL", itemType: "Reagent", device: "", fridgeName: "",
     lotNumber: "", quantityReceived: "", expiryDate: "",
-    receivedBy: username || "", receivedDate: new Date().toISOString().slice(0, 10),
+    receivedBy: "", receivedDate: new Date().toISOString().slice(0, 10),
     lowStockThreshold: "",
     intact_container: true,
     complete_compound: true,
@@ -80,7 +80,6 @@ export default function ReceiveWizard({ presets, devices, fridgeNames, role, dep
   }
 
   const devicesForDept = (devices || []).filter((d) => d.department === form.department);
-  const presetsForDept = form.department ? (presets || []).filter((p) => p.department === form.department) : presets;
 
   const step1Valid = form.name && form.lotNumber && form.quantityReceived && form.expiryDate && form.receivedBy && form.receivedDate;
 
@@ -107,7 +106,7 @@ export default function ReceiveWizard({ presets, devices, fridgeNames, role, dep
               <SearchableSelect
                 value={form.name}
                 onChange={handleNameChange}
-                options={presetsForDept.map((p) => p.name)}
+                options={presets.map((p) => p.name)}
                 placeholder="Search or type a new name"
                 style={{ marginTop: 4 }}
               />
@@ -142,7 +141,7 @@ export default function ReceiveWizard({ presets, devices, fridgeNames, role, dep
                 <option value="Cal">Cal</option>
               </select>
             </label>
-            <label style={labelStyle}>Received by (signed in as)<input style={{ ...inputStyle, background: "#F0F3F2", color: "#516361" }} value={form.receivedBy} readOnly /></label>
+            <label style={labelStyle}>Received by (your name)<input style={inputStyle} value={form.receivedBy} onChange={set("receivedBy")} /></label>
             <label style={labelStyle}>Date of receipt<input type="date" lang="en-US" dir="ltr" style={inputStyle} value={form.receivedDate} onChange={set("receivedDate")} /></label>
             <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
               <label style={{ ...labelStyle, flex: 1 }}>Lot number<input style={inputStyle} value={form.lotNumber} onChange={set("lotNumber")} /></label>

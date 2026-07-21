@@ -9,7 +9,7 @@ const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
 const todayMonth = () => new Date().toISOString().slice(0, 7);
 // Your lab's fridges — always shown as cards here, even before any stock
 // count or temperature reading has been entered for them yet.
-const BASE_FRIDGES = ["R011", "R014", "R009", "Lab0202", "Lab0007", "Lab0005", "Lab00014"];
+const BASE_FRIDGES = ["R011", "R014", "R009", "R01", "Lab0202", "R012", "R0008"];
 const todayISO = () => {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -34,15 +34,8 @@ export default function FridgeInventory({ username, logActivity }) {
   const [tempLogs, setTempLogs] = useState([]);
 
   async function loadAll() {
-    const pageSize = 1000;
-    const { count } = await supabase.from("fridge_inventory").select("*", { count: "exact", head: true });
-    const total = count || 0;
-    const starts = [];
-    for (let from = 0; from < total; from += pageSize) starts.push(from);
-    const pages = await Promise.all(
-      starts.map((from) => supabase.from("fridge_inventory").select("*").order("row_order").range(from, from + pageSize - 1))
-    );
-    setAll(pages.flatMap((p) => p.data || []));
+    const { data } = await supabase.from("fridge_inventory").select("*").order("row_order");
+    setAll(data || []);
     setDirty(false);
     setDeletedIds([]);
   }
@@ -50,49 +43,7 @@ export default function FridgeInventory({ username, logActivity }) {
     const { data } = await supabase.from("fridge_temperature_logs").select("*").order("date", { ascending: false });
     setTempLogs(data || []);
   }
-  const [owners, setOwners] = useState({});
-  const [fridgePhotos, setFridgePhotos] = useState({});
-  async function loadOwners() {
-    const { data } = await supabase.from("fridge_owners").select("*");
-    const map = {}; const photoMap = {};
-    (data || []).forEach((o) => { map[o.fridge_name] = o.employee_name; if (o.image_url) photoMap[o.fridge_name] = o.image_url; });
-    setOwners(map);
-    setFridgePhotos(photoMap);
-  }
-  useEffect(() => { loadOwners(); }, []);
-  async function uploadFridgePhoto(fridgeName, dataUrl) {
-    const { data: existing } = await supabase.from("fridge_owners").select("fridge_name").eq("fridge_name", fridgeName).maybeSingle();
-    if (existing) {
-      await supabase.from("fridge_owners").update({ image_url: dataUrl }).eq("fridge_name", fridgeName);
-    } else {
-      await supabase.from("fridge_owners").insert({ fridge_name: fridgeName, employee_name: "", image_url: dataUrl });
-    }
-    loadOwners();
-  }
   useEffect(() => { loadAll(); loadTemps(); }, []);
-
-  // Opening a fridge for a month that has no count yet: carry forward the
-  // most recent prior month's items as a starting point, so staff only
-  // update quantities/expiry instead of re-typing the whole sheet.
-  useEffect(() => {
-    if (!refrigeratorName || all === null) return;
-    const existing = all.filter((r) => r.month === month && r.refrigerator_name === refrigeratorName);
-    if (existing.length > 0) return;
-    const priorRows = all.filter((r) => r.refrigerator_name === refrigeratorName && r.month < month);
-    if (priorRows.length === 0) return;
-    const latestPriorMonth = priorRows.reduce((m, r) => (r.month > m ? r.month : m), priorRows[0].month);
-    const carryOver = priorRows
-      .filter((r) => r.month === latestPriorMonth)
-      .map((r, i) => ({
-        id: `temp-${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`,
-        month, refrigerator_name: refrigeratorName, counted_by: countedBy,
-        added_by: username || "", edited_by: "", edited_at: null,
-        device_group: r.device_group, item_name: r.item_name, lot_number: r.lot_number,
-        quantity: r.quantity, expiry_date: r.expiry_date, row_order: r.row_order,
-      }));
-    setAll((a) => [...a, ...carryOver]);
-    setDirty(true);
-  }, [refrigeratorName, month, all]);
 
   async function renameFridge(oldName, newName) {
     if (!newName || newName === oldName) return;
@@ -110,7 +61,7 @@ export default function FridgeInventory({ username, logActivity }) {
   const deviceSuggestions = useMemo(() => [...new Set((all || []).map((r) => r.device_group).filter(Boolean))], [all]);
   const itemCountFor = (name) => (all || []).filter((r) => r.refrigerator_name === name && r.month === month && r.item_name).length;
 
-  const currentRows = useMemo(() => (all || []).filter((r) => r.month === month && r.refrigerator_name === refrigeratorName), [all, month, refrigeratorName]);
+  const currentRows = (all || []).filter((r) => r.month === month && r.refrigerator_name === refrigeratorName);
   const _now = new Date();
   const today = new Date(_now.getTime() - _now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   function isArchivedRow(r) {
@@ -132,7 +83,6 @@ export default function FridgeInventory({ username, logActivity }) {
     const tempRow = {
       id: `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       month, refrigerator_name: refrigeratorName, counted_by: countedBy,
-      added_by: username || "", edited_by: "", edited_at: null,
       device_group: deviceGroup, item_name: "", lot_number: "", quantity: "", expiry_date: null, row_order: maxOrder + 1,
     };
     setAll((a) => [...a, tempRow]);
@@ -146,12 +96,7 @@ export default function FridgeInventory({ username, logActivity }) {
   }
 
   function updateRow(id, field, value) {
-    setAll((a) => a.map((r) => {
-      if (r.id !== id) return r;
-      const updated = { ...r, [field]: value };
-      if (!isTempId(id)) { updated.edited_by = username || ""; updated.edited_at = new Date().toISOString(); }
-      return updated;
-    }));
+    setAll((a) => a.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
     setDirty(true);
   }
 
@@ -176,7 +121,6 @@ export default function FridgeInventory({ username, logActivity }) {
     for (const r of toUpdate) {
       await supabase.from("fridge_inventory").update({
         item_name: r.item_name, lot_number: r.lot_number, quantity: r.quantity, expiry_date: r.expiry_date, counted_by: r.counted_by,
-        edited_by: r.edited_by || "", edited_at: r.edited_at || null,
       }).eq("id", r.id);
     }
     await logActivity?.("fridge_count", "fridge", `${refrigeratorName} — ${month}: ${toInsert.length} new row(s), ${toUpdate.length} updated`);
@@ -248,7 +192,7 @@ export default function FridgeInventory({ username, logActivity }) {
           <div className="no-print" style={{ marginBottom: 18 }}>
             <FridgeImport onApply={handleFridgeImport} />
           </div>
-          <FridgePicker fridgeNames={fridgeNames} all={all} month={month} owners={owners} fridgePhotos={fridgePhotos} onUploadPhoto={uploadFridgePhoto} onSelect={setRefrigeratorName} onRename={renameFridge} />
+          <FridgePicker fridgeNames={fridgeNames} all={all} month={month} onSelect={setRefrigeratorName} onRename={renameFridge} />
         </>
       ) : (
         <div id="fridge-print-area">
@@ -269,7 +213,6 @@ export default function FridgeInventory({ username, logActivity }) {
             }}
           />
 
-
           <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #C7D1CE" }}>
             <thead>
               <tr>
@@ -277,7 +220,6 @@ export default function FridgeInventory({ username, logActivity }) {
                 <th style={thStyle}>Unit</th>
                 <th style={thStyle}>Quantity</th>
                 <th style={thStyle}>Expiry date</th>
-                <th className="no-print" style={{ ...thStyle, width: 140 }}>Signed</th>
                 <th className="no-print" style={{ ...thStyle, width: 30 }}></th>
               </tr>
             </thead>
@@ -285,7 +227,7 @@ export default function FridgeInventory({ username, logActivity }) {
               {Object.entries(groups).map(([section, rows]) => (
                 <React.Fragment key={section}>
                   <tr>
-                    <td colSpan={6} style={{ textAlign: "center", fontWeight: 700, background: "#F7F9F8", border: "1px solid #C7D1CE", padding: "6px 0" }}>#{section}</td>
+                    <td colSpan={5} style={{ textAlign: "center", fontWeight: 700, background: "#F7F9F8", border: "1px solid #C7D1CE", padding: "6px 0" }}>#{section}</td>
                   </tr>
                   {rows.map((r) => (
                     <tr key={r.id}>
@@ -301,20 +243,13 @@ export default function FridgeInventory({ username, logActivity }) {
                       <td style={tdStyle}>
                         <input type="date" lang="en-US" dir="ltr" style={cellInputStyle} value={r.expiry_date || ""} onChange={(e) => updateRow(r.id, "expiry_date", e.target.value)} />
                       </td>
-                      <td className="no-print" style={{ ...tdStyle, fontSize: 11, color: "#7B8E8A" }}>
-                        {r.edited_by ? (
-                          <span title={r.edited_at ? new Date(r.edited_at).toLocaleString() : ""}>edited: {r.edited_by}</span>
-                        ) : r.added_by ? (
-                          <span>added: {r.added_by}</span>
-                        ) : "—"}
-                      </td>
                       <td className="no-print" style={{ ...tdStyle, textAlign: "center" }}>
                         <button onClick={() => deleteRow(r.id)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={13} /></button>
                       </td>
                     </tr>
                   ))}
                   <tr className="no-print">
-                    <td colSpan={6} style={{ border: "1px solid #C7D1CE", padding: 4 }}>
+                    <td colSpan={5} style={{ border: "1px solid #C7D1CE", padding: 4 }}>
                       <button onClick={() => addRow(section)} style={{ background: "none", border: "none", color: "var(--accent-1)", fontSize: 12, fontWeight: 600 }}>+ Add row to #{section}</button>
                     </td>
                   </tr>
@@ -416,14 +351,14 @@ const thStyle = { border: "1px solid #C7D1CE", padding: "8px 10px", fontSize: 12
 const tdStyle = { border: "1px solid #C7D1CE", padding: "4px 6px" };
 const cellInputStyle = { border: "none", background: "transparent", fontSize: 13, width: "100%", padding: "4px 2px" };
 
-function FridgePicker({ fridgeNames, all, month, owners, fridgePhotos, onUploadPhoto, onSelect, onRename }) {
+function FridgePicker({ fridgeNames, all, month, onSelect, onRename }) {
   const [newName, setNewName] = useState("");
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14, marginBottom: 18 }}>
         {fridgeNames.map((name) => {
           const items = [...new Set((all || []).filter((r) => r.refrigerator_name === name && r.month === month).map((r) => r.item_name).filter(Boolean))];
-          return <FridgeCard key={name} name={name} owner={(owners || {})[name]} imageUrl={(fridgePhotos || {})[name]} onUploadPhoto={onUploadPhoto} items={items} onClick={() => onSelect(name)} onRename={(newN) => onRename(name, newN)} />;
+          return <FridgeCard key={name} name={name} items={items} onClick={() => onSelect(name)} onRename={(newN) => onRename(name, newN)} />;
         })}
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", maxWidth: 340 }}>
@@ -436,59 +371,34 @@ function FridgePicker({ fridgeNames, all, month, owners, fridgePhotos, onUploadP
 
 // A CSS-drawn fridge: a body with a translucent "glass" window showing small
 // chips for whatever's currently logged inside, and the name on top.
-function FridgeCard({ name, owner, imageUrl, onUploadPhoto, items, onClick, onRename }) {
+function FridgeCard({ name, items, onClick, onRename }) {
   function handleRename(e) {
     e.stopPropagation();
     const newName = prompt(`Rename "${name}" to:`, name);
     if (newName && newName.trim() && newName.trim() !== name) onRename(newName.trim());
   }
-  function handleFile(e) {
-    e.stopPropagation();
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => onUploadPhoto(name, reader.result);
-    reader.readAsDataURL(file);
-  }
   return (
     <div style={{ textAlign: "center" }}>
-      <div onClick={onClick} style={{ width: "100%", aspectRatio: "3/4", background: imageUrl ? "#fff" : "linear-gradient(160deg, #EAF0F5 0%, #D5E0E8 100%)", border: "2px solid #B7C3C0", borderRadius: 14, position: "relative", overflow: "hidden", boxShadow: "0 3px 8px rgba(0,0,0,0.08)", cursor: "pointer" }}>
-        {owner && (
-          <div style={{ position: "absolute", top: 6, left: 6, zIndex: 2, background: "var(--accent-1)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 5, letterSpacing: 0.3, boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>
-            {owner}
-          </div>
-        )}
+      <div onClick={onClick} style={{ width: "100%", aspectRatio: "3/4", background: "linear-gradient(160deg, #EAF0F5 0%, #D5E0E8 100%)", border: "2px solid #B7C3C0", borderRadius: 14, position: "relative", overflow: "hidden", boxShadow: "0 3px 8px rgba(0,0,0,0.08)", cursor: "pointer" }}>
         {onRename && (
           <button onClick={handleRename} title="Rename fridge" style={{ position: "absolute", top: 6, right: 6, zIndex: 2, background: "rgba(255,255,255,0.85)", border: "none", borderRadius: 6, padding: 4, display: "flex" }}>
             <Pencil size={12} color="#516361" />
           </button>
         )}
-        {imageUrl ? (
-          <img src={imageUrl} alt={name} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 6, boxSizing: "border-box" }} />
-        ) : (
-          <>
-            <div style={{ position: "absolute", top: "18%", left: 0, right: 0, height: 2, background: "#B7C3C0" }} />
-            <div style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", width: 26, height: 5, borderRadius: 3, background: "#9FB0AE" }} />
-            <div style={{ position: "absolute", top: "26%", left: "50%", transform: "translateX(-50%)", width: 8, height: 8, borderRadius: 4, background: "#8A9694" }} />
-            <div style={{ position: "absolute", top: "20%", bottom: 10, left: 10, right: 10, background: "rgba(255,255,255,0.35)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.6)", backdropFilter: "blur(1px)", display: "flex", flexWrap: "wrap", gap: 4, alignContent: "flex-start", padding: 8, overflow: "hidden" }}>
-              {items.length === 0 ? (
-                <span style={{ fontSize: 10.5, color: "#7B8E8A", margin: "auto" }}>empty</span>
-              ) : (
-                items.slice(0, 8).map((it) => (
-                  <span key={it} style={{ background: "var(--accent-2)", color: "#fff", fontSize: 9, fontWeight: 700, padding: "3px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>{it}</span>
-                ))
-              )}
-            </div>
-          </>
-        )}
+        <div style={{ position: "absolute", top: "18%", left: 0, right: 0, height: 2, background: "#B7C3C0" }} />
+        <div style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", width: 26, height: 5, borderRadius: 3, background: "#9FB0AE" }} />
+        <div style={{ position: "absolute", top: "26%", left: "50%", transform: "translateX(-50%)", width: 8, height: 8, borderRadius: 4, background: "#8A9694" }} />
+        <div style={{ position: "absolute", top: "20%", bottom: 10, left: 10, right: 10, background: "rgba(255,255,255,0.35)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.6)", backdropFilter: "blur(1px)", display: "flex", flexWrap: "wrap", gap: 4, alignContent: "flex-start", padding: 8, overflow: "hidden" }}>
+          {items.length === 0 ? (
+            <span style={{ fontSize: 10.5, color: "#7B8E8A", margin: "auto" }}>empty</span>
+          ) : (
+            items.slice(0, 8).map((it) => (
+              <span key={it} style={{ background: "var(--accent-2)", color: "#fff", fontSize: 9, fontWeight: 700, padding: "3px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>{it}</span>
+            ))
+          )}
+        </div>
       </div>
       <div style={{ fontWeight: 700, fontSize: 13, marginTop: 8 }}>{name}</div>
-      {onUploadPhoto && (
-        <label className="no-print" style={{ display: "inline-block", marginTop: 4, fontSize: 10.5, color: "var(--accent-1)", fontWeight: 600, cursor: "pointer" }}>
-          {imageUrl ? "Change photo" : "+ Add photo"}
-          <input type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
-        </label>
-      )}
     </div>
   );
 }

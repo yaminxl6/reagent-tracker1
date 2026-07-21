@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Beaker, TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, Package, ClipboardList, KeyRound } from "lucide-react";
+import { Beaker, TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, Package, ClipboardList } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Login from "./Login";
 import Settings from "./Settings";
@@ -71,7 +71,6 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showLog, setShowLog] = useState(false);
-  const [showChangePassword, setShowChangePassword] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [editReagent, setEditReagent] = useState(null);
   const [editLog, setEditLog] = useState(null);
@@ -166,21 +165,6 @@ export default function App() {
     setUsername("");
   }
 
-  // Auto sign-out after 30 minutes with no mouse/keyboard/touch activity,
-  // so a shared workstation doesn't stay logged in indefinitely.
-  useEffect(() => {
-    if (!role) return;
-    const TIMEOUT_MS = 30 * 60 * 1000;
-    let timer = setTimeout(logout, TIMEOUT_MS);
-    const reset = () => { clearTimeout(timer); timer = setTimeout(logout, TIMEOUT_MS); };
-    const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
-    events.forEach((ev) => window.addEventListener(ev, reset));
-    return () => {
-      clearTimeout(timer);
-      events.forEach((ev) => window.removeEventListener(ev, reset));
-    };
-  }, [role]);
-
   async function addReagent(entry) {
     const dup = reagents.find((r) => !r.deleted && r.name === entry.name && r.lot_number === entry.lotNumber);
     if (dup && !confirm(`Lot ${entry.lotNumber} already exists for ${entry.name}. Add it again anyway?`)) return;
@@ -207,17 +191,6 @@ export default function App() {
       inspection_notes: entry.inspectionNotes,
     });
     await logActivity("receive", "reagent", `${entry.name} — Lot ${entry.lotNumber}, ${entry.quantityReceived} ${entry.unit}, received by ${entry.receivedBy}`);
-    if (entry.fridgeName && entry.fridgeName !== ROOM_TEMP) {
-      const month = (entry.receivedDate || todayISO()).slice(0, 7);
-      const { data: existingRows } = await supabase.from("fridge_inventory").select("row_order").eq("month", month).eq("refrigerator_name", entry.fridgeName);
-      const maxOrder = (existingRows || []).reduce((m, r) => Math.max(m, r.row_order || 0), 0);
-      await supabase.from("fridge_inventory").insert({
-        month, refrigerator_name: entry.fridgeName, counted_by: entry.receivedBy || "",
-        added_by: entry.receivedBy || "", device_group: entry.device || "",
-        item_name: entry.name, lot_number: entry.lotNumber, quantity: String(entry.quantityReceived),
-        expiry_date: entry.expiryDate, row_order: maxOrder + 1,
-      });
-    }
     setShowWizard(false);
     loadAll();
   }
@@ -248,17 +221,6 @@ export default function App() {
         low_stock_threshold: Number(entry.lowStockThreshold) || Math.ceil(Number(entry.quantityReceived) * ((config.low_stock_default_percent || 15) / 100)),
         intact_container: true, complete_compound: true, expiration_validity: true, lot_matches_kit: true, storage_condition_ok: true,
       });
-      if (fridgeName && fridgeName !== ROOM_TEMP) {
-        const month = (entry.receivedDate || todayISO()).slice(0, 7);
-        const { data: existingRows } = await supabase.from("fridge_inventory").select("row_order").eq("month", month).eq("refrigerator_name", fridgeName);
-        const maxOrder = (existingRows || []).reduce((m, r) => Math.max(m, r.row_order || 0), 0);
-        await supabase.from("fridge_inventory").insert({
-          month, refrigerator_name: fridgeName, counted_by: entry.receivedBy || "",
-          added_by: entry.receivedBy || "", device_group: entry.device || "",
-          item_name: entry.name, lot_number: entry.lotNumber, quantity: String(entry.quantityReceived),
-          expiry_date: entry.expiryDate, row_order: maxOrder + 1,
-        });
-      }
     }
     await logActivity("bulk_import", "reagent", `Imported ${rows.length} lot(s) from file`);
     setShowImport(false);
@@ -268,27 +230,11 @@ export default function App() {
   async function recordConsumption(entry) {
     const item = reagents.find((r) => r.id === entry.reagentId);
     if (!item) return;
-    // Atomic, race-safe: the DB locks the row, checks stock, deducts, and
-    // inserts the log in one transaction (see record_consumption in
-    // FIX_CONSUMPTION_RACE_CONDITION.sql). Rejects if amount > what's
-    // actually left, unless the user confirmed overuse.
-    const { error } = await supabase.rpc("record_consumption", {
-      p_reagent_id: entry.reagentId,
-      p_amount: entry.amount,
-      p_date: entry.date,
-      p_used_by: entry.usedBy,
-      p_note: entry.note,
-      p_tested_by_qc: entry.testedByQC,
-      p_allow_overuse: !!entry.allowOveruse,
+    const newQty = Math.max(0, item.current_quantity - entry.amount);
+    await supabase.from("reagents").update({ current_quantity: newQty }).eq("id", item.id);
+    await supabase.from("consumption_logs").insert({
+      reagent_id: entry.reagentId, amount: entry.amount, date: entry.date, used_by: entry.usedBy, note: entry.note, tested_by_qc: entry.testedByQC,
     });
-    if (error) {
-      if (error.message?.includes("INSUFFICIENT_STOCK")) {
-        alert(`Only ${item.current_quantity} ${item.unit} left for ${item.name} (Lot ${item.lot_number}) — can't log ${entry.amount}.`);
-      } else {
-        alert("Could not save: " + error.message);
-      }
-      return;
-    }
     await logActivity("log_use", "log", `${item.name} — −${entry.amount} ${item.unit} used by ${entry.usedBy}${entry.note ? ` (${entry.note})` : ""}`);
     setShowLog(false);
     loadAll();
@@ -320,20 +266,15 @@ export default function App() {
 
   async function saveEditedLog(updated, original) {
     const item = reagents.find((r) => r.id === original.reagent_id);
-    const { error } = await supabase.rpc("edit_consumption_log", {
-      p_log_id: updated.id,
-      p_new_amount: updated.amount,
-      p_date: updated.date,
-      p_used_by: updated.used_by,
-      p_note: updated.note,
-      p_tested_by_qc: updated.tested_by_qc,
-      p_edited_by: username,
-      p_allow_overuse: !!updated.allowOveruse,
-    });
-    if (error) {
-      alert(error.message?.includes("INSUFFICIENT_STOCK") ? "Not enough stock left to raise this amount that much." : "Could not save: " + error.message);
-      return;
+    if (item) {
+      const delta = updated.amount - original.amount;
+      const newQty = Math.max(0, item.current_quantity - delta);
+      await supabase.from("reagents").update({ current_quantity: newQty }).eq("id", item.id);
     }
+    await supabase.from("consumption_logs").update({
+      amount: updated.amount, date: updated.date, used_by: updated.used_by, note: updated.note, tested_by_qc: updated.tested_by_qc,
+      edited_by: username, edited_at: new Date().toISOString(),
+    }).eq("id", updated.id);
     await logActivity("edit", "log", `${item ? item.name : "Unknown"} — ${updated.amount} used by ${updated.used_by} on ${updated.date}`);
     setEditLog(null);
     loadAll();
@@ -343,8 +284,8 @@ export default function App() {
     if (!["admin","super","owner"].includes(role)) return;
     if (!confirm("Remove this log entry? The amount will be added back to stock, but it stays in Reports for audit purposes.")) return;
     const item = reagents.find((r) => r.id === log.reagent_id);
-    const { error } = await supabase.rpc("delete_consumption_log", { p_log_id: log.id, p_deleted_by: username });
-    if (error) { alert("Could not delete: " + error.message); return; }
+    if (item) await supabase.from("reagents").update({ current_quantity: item.current_quantity + log.amount }).eq("id", item.id);
+    await supabase.from("consumption_logs").update({ deleted: true, deleted_by: username, deleted_at: new Date().toISOString() }).eq("id", log.id);
     await logActivity("delete", "log", `${item ? item.name : "Unknown"} — ${log.amount} used by ${log.used_by} on ${log.date}`);
     loadAll();
   }
@@ -509,9 +450,7 @@ export default function App() {
           onImport={() => { setShowImport(true); setSidebarOpen(false); }}
           onLog={() => { setShowLog(true); setSidebarOpen(false); }}
           onLogout={logout} onEnableNotif={enableNotifications}
-          onChangePassword={() => { setShowChangePassword(true); setSidebarOpen(false); }}
         />
-        {showChangePassword && <ChangePasswordModal username={username} onClose={() => setShowChangePassword(false)} />}
 
         <div className="app-main-col">
           <div className="mobile-topbar no-print" style={{ background: "#fff", borderBottom: "1px solid #EDEFF2", padding: "12px 16px", alignItems: "center", gap: 10 }}>
@@ -561,13 +500,13 @@ export default function App() {
         </div>
       </div>
 
-      {showWizard && <ReceiveWizard presets={presets} devices={devices} fridgeNames={fridgeNames} role={role} departments={config.departments || []} username={username} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
+      {showWizard && <ReceiveWizard presets={presets} devices={devices} fridgeNames={fridgeNames} role={role} departments={config.departments || []} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
       {showImport && (
         <Modal title="Bulk import reagents" onClose={() => setShowImport(false)}>
           <ReagentImport departments={config.departments || []} onApply={bulkReceive} />
         </Modal>
       )}
-      {showLog && <LogConsumptionModal reagents={reagents.filter((r) => !r.deleted)} username={username} onClose={() => setShowLog(false)} onSubmit={recordConsumption} />}
+      {showLog && <LogConsumptionModal reagents={reagents.filter((r) => !r.deleted)} onClose={() => setShowLog(false)} onSubmit={recordConsumption} />}
       {editReagent && <EditReagentModal reagent={editReagent} onClose={() => setEditReagent(null)} onSave={saveEditedReagent} />}
       {editLog && <EditLogModal log={editLog} onClose={() => setEditLog(null)} onSave={saveEditedLog} />}
       {error && <div style={{ position: "fixed", bottom: 16, left: "50%", transform: "translateX(-50%)", background: "#C1432B", color: "#fff", padding: "10px 18px", borderRadius: 8, fontSize: 14 }}>{error}</div>}
@@ -575,61 +514,7 @@ export default function App() {
   );
 }
 
-function ChangePasswordModal({ username, onClose }) {
-  const [current, setCurrent] = useState("");
-  const [pw1, setPw1] = useState("");
-  const [pw2, setPw2] = useState("");
-  const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState(false);
-
-  async function submit() {
-    setError("");
-    if (!current || !pw1 || !pw2) { setError("Fill in all fields."); return; }
-    if (pw1.length < 4) { setError("New password must be at least 4 characters."); return; }
-    if (pw1 !== pw2) { setError("New passwords don't match."); return; }
-    setSaving(true);
-    const { data: acct } = await supabase.from("staff_accounts").select("*").eq("display_name", username).maybeSingle();
-    if (!acct) {
-      setError("Couldn't find your individual account — ask an admin to set one up for you first.");
-      setSaving(false);
-      return;
-    }
-    if (acct.password !== current) {
-      setError("Current password is incorrect.");
-      setSaving(false);
-      return;
-    }
-    await supabase.from("staff_accounts").update({ password: pw1, must_change_password: false }).eq("id", acct.id);
-    setSaving(false);
-    setDone(true);
-  }
-
-  return (
-    <Modal title="Change my password" onClose={onClose}>
-      {done ? (
-        <>
-          <div style={{ fontSize: 13.5, color: "#2F6B4F", background: "#EAF6EF", border: "1px solid #CFE9DA", borderRadius: 7, padding: "10px 12px", marginBottom: 14 }}>
-            Password updated. Use it next time you log in.
-          </div>
-          <button onClick={onClose} style={{ width: "100%", background: "var(--accent-1)", color: "#fff", border: "none", borderRadius: 8, padding: "10px", fontWeight: 700, fontSize: 14 }}>Done</button>
-        </>
-      ) : (
-        <>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <label style={labelStyle}>Current password<input type="password" style={inputStyle} value={current} onChange={(e) => setCurrent(e.target.value)} /></label>
-            <label style={labelStyle}>New password<input type="password" style={inputStyle} value={pw1} onChange={(e) => setPw1(e.target.value)} /></label>
-            <label style={labelStyle}>Confirm new password<input type="password" style={inputStyle} value={pw2} onChange={(e) => setPw2(e.target.value)} /></label>
-            {error && <div style={{ color: "#C1432B", fontSize: 12.5 }}>{error}</div>}
-          </div>
-          <button onClick={submit} disabled={saving} style={{ marginTop: 14, width: "100%", background: saving ? "#A9BAB6" : "#0F7173", color: "#fff", border: "none", borderRadius: 8, padding: "11px", fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer" }}>{saving ? "Saving…" : "Save new password"}</button>
-        </>
-      )}
-    </Modal>
-  );
-}
-
-function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, onImport, onLog, onLogout, onEnableNotif, onChangePassword }) {
+function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, onImport, onLog, onLogout, onEnableNotif }) {
   const isAdmin = ["admin","super","owner"].includes(role);
   const isSuper = ["super","owner"].includes(role);
   return (
@@ -676,7 +561,6 @@ function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, o
       </nav>
 
       <div style={{ padding: "12px 12px", borderTop: "1px solid #EDEFF2", display: "flex", gap: 8 }}>
-        <button onClick={onChangePassword} title="Change my password" style={{ flex: 1, background: "#fff", border: "1px solid #E1E5EA", color: "#8A93A0", borderRadius: 8, padding: "8px", display: "flex", justifyContent: "center" }}><KeyRound size={14} /></button>
         <button onClick={onEnableNotif} title="Enable browser alerts" style={{ flex: 1, background: "#fff", border: "1px solid #E1E5EA", color: "#8A93A0", borderRadius: 8, padding: "8px", display: "flex", justifyContent: "center" }}><Bell size={14} /></button>
         <button onClick={onLogout} title="Log out" style={{ flex: 1, background: "#fff", border: "1px solid #E1E5EA", color: "#8A93A0", borderRadius: 8, padding: "8px", display: "flex", justifyContent: "center" }}><LogOut size={14} /></button>
       </div>
@@ -980,6 +864,7 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
   const matchedLots = useMemo(() => {
     const term = searchLot.trim().toLowerCase();
     return reagents
+      .filter((r) => !r.deleted)
       .filter((r) => (term
         ? (r.lot_number || "").toLowerCase().includes(term)
           || (r.name || "").toLowerCase().includes(term)
@@ -1119,12 +1004,7 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
                 <div style={{ fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}>
                   {r.name}
-                  {r.deleted && (() => {
-                    const isFinished = r.current_quantity <= 0 || (r.disposed_by && r.disposed_by !== "");
-                    return isFinished
-                      ? <span className="no-print" style={{ fontSize: 10, fontWeight: 700, color: "#8A6D3B", background: "#FBF3E6", padding: "2px 7px", borderRadius: 4 }}>FINISHED{r.disposed_by ? ` · disposed by ${r.disposed_by} on ${r.disposed_date || ""}` : ""}</span>
-                      : <span className="no-print" style={{ fontSize: 10, fontWeight: 700, color: "#C1432B", background: "#FBEAE6", padding: "2px 7px", borderRadius: 4 }}>DELETED by {r.deleted_by} · {fmtDateTime(r.deleted_at)}</span>;
-                  })()}
+                  {r.deleted && <span className="no-print" style={{ fontSize: 10, fontWeight: 700, color: "#C1432B", background: "#FBEAE6", padding: "2px 7px", borderRadius: 4 }}>DELETED by {r.deleted_by} · {fmtDateTime(r.deleted_at)}</span>}
                   {r.deleted && ["super","owner"].includes(role) && (
                     <button onClick={() => onPurgeReagent(r.id)} className="no-print" style={{ background: "none", border: "1px solid #C1432B", color: "#C1432B", borderRadius: 6, padding: "3px 9px", fontSize: 10.5, fontWeight: 700 }}>Erase permanently</button>
                   )}
@@ -1260,32 +1140,20 @@ function Modal({ title, onClose, children }) {
 const inputStyle = { width: "100%", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 11px", fontSize: 14, marginTop: 4, boxSizing: "border-box" };
 const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
 
-function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
+function LogConsumptionModal({ reagents, onClose, onSubmit }) {
   const [typeFilter, setTypeFilter] = useState("");
   const filteredReagents = typeFilter ? reagents.filter((r) => r.item_type === typeFilter) : reagents;
   const names = [...new Set(filteredReagents.map((r) => r.name))];
   const [name, setName] = useState(names[0] || "");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayISO());
-  const [usedBy, setUsedBy] = useState(username || "");
+  const [usedBy, setUsedBy] = useState("");
   const [note, setNote] = useState("");
   const [testedByQC, setTestedByQC] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
-  const [selectedLotId, setSelectedLotId] = useState(""); // "" = follow FEFO suggestion
 
-  const allLots = reagents.filter((r) => r.name === name).sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date));
-  // Only offer/suggest lots that actually still have stock — a lot at 0 was
-  // previously still being picked as "FEFO", letting staff log usage
-  // against an already-finished lot.
-  const lots = allLots.filter((r) => r.current_quantity > 0);
-  const fefoDefault = lots[0] || null;
-  // Staff can override FEFO and pick a specific lot (e.g. one already open).
-  const fefo = (selectedLotId && lots.find((r) => r.id === selectedLotId)) || fefoDefault;
-  const overAmount = fefo && amount !== "" && Number(amount) > fefo.current_quantity;
-
-  // Reset the manual lot choice whenever the reagent name changes, so a
-  // leftover selection from a different reagent can't get used by mistake.
-  React.useEffect(() => { setSelectedLotId(""); }, [name]);
+  const lots = reagents.filter((r) => r.name === name).sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date));
+  const fefo = lots[0];
 
   function changeType(t) {
     setTypeFilter(t);
@@ -1302,7 +1170,6 @@ function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
 
   function submit() {
     if (!fefo || !amount || !usedBy) return;
-    if (overAmount) return; // blocked — warning is shown under the field
     onSubmit({ reagentId: fefo.id, amount: Number(amount), date, usedBy, note, testedByQC });
   }
 
@@ -1333,35 +1200,14 @@ function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
             FEFO suggests <b>Lot {fefo.lot_number}</b> ({fefo.current_quantity} {fefo.unit} left, expires {fefo.expiry_date}){lots.length > 1 ? ` — ${lots.length} lots available` : ""}
           </div>
         )}
-        {lots.length > 1 && (
-          <label style={labelStyle}>Lot (defaults to FEFO — change if using a different one)
-            <select style={inputStyle} value={selectedLotId || fefoDefault?.id || ""} onChange={(e) => setSelectedLotId(e.target.value)}>
-              {lots.map((l) => (
-                <option key={l.id} value={l.id}>
-                  Lot {l.lot_number} — {l.current_quantity} {l.unit} left, expires {l.expiry_date}{l.device ? ` · ${l.device}` : ""}{l.fridge_name ? ` · ${l.fridge_name}` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {!fefo && name && allLots.length > 0 && (
-          <div style={{ background: "#FBEAE6", border: "1px solid #F3CFC5", borderRadius: 7, padding: "9px 12px", fontSize: 12.5, color: "#C1432B" }}>
-            All lots of {name} are already used up (0 left) — receive new stock before logging more usage.
-          </div>
-        )}
         <div style={{ display: "flex", gap: 10 }}>
-          <label style={{ ...labelStyle, flex: 1 }}>Amount used ({fefo?.unit || "unit"})
-            <input type="number" min="0" max={fefo?.current_quantity ?? undefined} style={{ ...inputStyle, ...(overAmount ? { borderColor: "#C1432B" } : {}) }} value={amount} onChange={(e) => setAmount(e.target.value)} disabled={!fefo} />
-          </label>
+          <label style={{ ...labelStyle, flex: 1 }}>Amount used ({fefo?.unit || "unit"})<input type="number" style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
           <label style={{ ...labelStyle, flex: 1 }}>Date<input type="date" lang="en-US" dir="ltr" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} /></label>
         </div>
-        {overAmount && (
-          <div style={{ color: "#C1432B", fontSize: 12, marginTop: -6 }}>Only {fefo.current_quantity} {fefo.unit} left in this lot — can't log more than that.</div>
-        )}
-        <label style={labelStyle}>Used by (signed in as)<input style={{ ...inputStyle, background: "#F0F3F2", color: "#516361" }} value={usedBy} readOnly /></label>
+        <label style={labelStyle}>Used by<input style={inputStyle} value={usedBy} onChange={(e) => setUsedBy(e.target.value)} placeholder="Your name" /></label>
         <label style={labelStyle}>Note (optional)<input style={inputStyle} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. daily QC run" /></label>
         <YesNoRow label="Tested by QC" value={testedByQC} onChange={setTestedByQC} />
-        <button onClick={submit} disabled={!fefo || overAmount || !amount || !usedBy} style={{ marginTop: 6, background: (!fefo || overAmount || !amount || !usedBy) ? "#A9BAB6" : "#0F7173", color: "#fff", border: "none", borderRadius: 8, padding: "11px", fontWeight: 700, fontSize: 14, cursor: (!fefo || overAmount || !amount || !usedBy) ? "not-allowed" : "pointer" }}>Save log</button>
+        <button onClick={submit} style={{ marginTop: 6, background: "#0F7173", color: "#fff", border: "none", borderRadius: 8, padding: "11px", fontWeight: 700, fontSize: 14 }}>Save log</button>
       </div>
       {showScanner && <BarcodeScanner onClose={() => setShowScanner(false)} onDetected={handleScan} />}
     </Modal>
