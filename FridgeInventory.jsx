@@ -51,13 +51,24 @@ export default function FridgeInventory({ username, logActivity }) {
     setTempLogs(data || []);
   }
   const [owners, setOwners] = useState({});
+  const [fridgePhotos, setFridgePhotos] = useState({});
   async function loadOwners() {
     const { data } = await supabase.from("fridge_owners").select("*");
-    const map = {};
-    (data || []).forEach((o) => { map[o.fridge_name] = o.employee_name; });
+    const map = {}; const photoMap = {};
+    (data || []).forEach((o) => { map[o.fridge_name] = o.employee_name; if (o.image_url) photoMap[o.fridge_name] = o.image_url; });
     setOwners(map);
+    setFridgePhotos(photoMap);
   }
   useEffect(() => { loadOwners(); }, []);
+  async function uploadFridgePhoto(fridgeName, dataUrl) {
+    const { data: existing } = await supabase.from("fridge_owners").select("fridge_name").eq("fridge_name", fridgeName).maybeSingle();
+    if (existing) {
+      await supabase.from("fridge_owners").update({ image_url: dataUrl }).eq("fridge_name", fridgeName);
+    } else {
+      await supabase.from("fridge_owners").insert({ fridge_name: fridgeName, employee_name: "", image_url: dataUrl });
+    }
+    loadOwners();
+  }
   useEffect(() => { loadAll(); loadTemps(); }, []);
 
   // Opening a fridge for a month that has no count yet: carry forward the
@@ -237,7 +248,7 @@ export default function FridgeInventory({ username, logActivity }) {
           <div className="no-print" style={{ marginBottom: 18 }}>
             <FridgeImport onApply={handleFridgeImport} />
           </div>
-          <FridgePicker fridgeNames={fridgeNames} all={all} month={month} owners={owners} onSelect={setRefrigeratorName} onRename={renameFridge} />
+          <FridgePicker fridgeNames={fridgeNames} all={all} month={month} owners={owners} fridgePhotos={fridgePhotos} onUploadPhoto={uploadFridgePhoto} onSelect={setRefrigeratorName} onRename={renameFridge} />
         </>
       ) : (
         <div id="fridge-print-area">
@@ -405,14 +416,14 @@ const thStyle = { border: "1px solid #C7D1CE", padding: "8px 10px", fontSize: 12
 const tdStyle = { border: "1px solid #C7D1CE", padding: "4px 6px" };
 const cellInputStyle = { border: "none", background: "transparent", fontSize: 13, width: "100%", padding: "4px 2px" };
 
-function FridgePicker({ fridgeNames, all, month, owners, onSelect, onRename }) {
+function FridgePicker({ fridgeNames, all, month, owners, fridgePhotos, onUploadPhoto, onSelect, onRename }) {
   const [newName, setNewName] = useState("");
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14, marginBottom: 18 }}>
         {fridgeNames.map((name) => {
           const items = [...new Set((all || []).filter((r) => r.refrigerator_name === name && r.month === month).map((r) => r.item_name).filter(Boolean))];
-          return <FridgeCard key={name} name={name} owner={(owners || {})[name]} items={items} onClick={() => onSelect(name)} onRename={(newN) => onRename(name, newN)} />;
+          return <FridgeCard key={name} name={name} owner={(owners || {})[name]} imageUrl={(fridgePhotos || {})[name]} onUploadPhoto={onUploadPhoto} items={items} onClick={() => onSelect(name)} onRename={(newN) => onRename(name, newN)} />;
         })}
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", maxWidth: 340 }}>
@@ -425,15 +436,23 @@ function FridgePicker({ fridgeNames, all, month, owners, onSelect, onRename }) {
 
 // A CSS-drawn fridge: a body with a translucent "glass" window showing small
 // chips for whatever's currently logged inside, and the name on top.
-function FridgeCard({ name, owner, items, onClick, onRename }) {
+function FridgeCard({ name, owner, imageUrl, onUploadPhoto, items, onClick, onRename }) {
   function handleRename(e) {
     e.stopPropagation();
     const newName = prompt(`Rename "${name}" to:`, name);
     if (newName && newName.trim() && newName.trim() !== name) onRename(newName.trim());
   }
+  function handleFile(e) {
+    e.stopPropagation();
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => onUploadPhoto(name, reader.result);
+    reader.readAsDataURL(file);
+  }
   return (
     <div style={{ textAlign: "center" }}>
-      <div onClick={onClick} style={{ width: "100%", aspectRatio: "3/4", background: "linear-gradient(160deg, #EAF0F5 0%, #D5E0E8 100%)", border: "2px solid #B7C3C0", borderRadius: 14, position: "relative", overflow: "hidden", boxShadow: "0 3px 8px rgba(0,0,0,0.08)", cursor: "pointer" }}>
+      <div onClick={onClick} style={{ width: "100%", aspectRatio: "3/4", background: imageUrl ? "#fff" : "linear-gradient(160deg, #EAF0F5 0%, #D5E0E8 100%)", border: "2px solid #B7C3C0", borderRadius: 14, position: "relative", overflow: "hidden", boxShadow: "0 3px 8px rgba(0,0,0,0.08)", cursor: "pointer" }}>
         {owner && (
           <div style={{ position: "absolute", top: 6, left: 6, zIndex: 2, background: "var(--accent-1)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 5, letterSpacing: 0.3, boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>
             {owner}
@@ -444,20 +463,32 @@ function FridgeCard({ name, owner, items, onClick, onRename }) {
             <Pencil size={12} color="#516361" />
           </button>
         )}
-        <div style={{ position: "absolute", top: "18%", left: 0, right: 0, height: 2, background: "#B7C3C0" }} />
-        <div style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", width: 26, height: 5, borderRadius: 3, background: "#9FB0AE" }} />
-        <div style={{ position: "absolute", top: "26%", left: "50%", transform: "translateX(-50%)", width: 8, height: 8, borderRadius: 4, background: "#8A9694" }} />
-        <div style={{ position: "absolute", top: "20%", bottom: 10, left: 10, right: 10, background: "rgba(255,255,255,0.35)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.6)", backdropFilter: "blur(1px)", display: "flex", flexWrap: "wrap", gap: 4, alignContent: "flex-start", padding: 8, overflow: "hidden" }}>
-          {items.length === 0 ? (
-            <span style={{ fontSize: 10.5, color: "#7B8E8A", margin: "auto" }}>empty</span>
-          ) : (
-            items.slice(0, 8).map((it) => (
-              <span key={it} style={{ background: "var(--accent-2)", color: "#fff", fontSize: 9, fontWeight: 700, padding: "3px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>{it}</span>
-            ))
-          )}
-        </div>
+        {imageUrl ? (
+          <img src={imageUrl} alt={name} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 6, boxSizing: "border-box" }} />
+        ) : (
+          <>
+            <div style={{ position: "absolute", top: "18%", left: 0, right: 0, height: 2, background: "#B7C3C0" }} />
+            <div style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", width: 26, height: 5, borderRadius: 3, background: "#9FB0AE" }} />
+            <div style={{ position: "absolute", top: "26%", left: "50%", transform: "translateX(-50%)", width: 8, height: 8, borderRadius: 4, background: "#8A9694" }} />
+            <div style={{ position: "absolute", top: "20%", bottom: 10, left: 10, right: 10, background: "rgba(255,255,255,0.35)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.6)", backdropFilter: "blur(1px)", display: "flex", flexWrap: "wrap", gap: 4, alignContent: "flex-start", padding: 8, overflow: "hidden" }}>
+              {items.length === 0 ? (
+                <span style={{ fontSize: 10.5, color: "#7B8E8A", margin: "auto" }}>empty</span>
+              ) : (
+                items.slice(0, 8).map((it) => (
+                  <span key={it} style={{ background: "var(--accent-2)", color: "#fff", fontSize: 9, fontWeight: 700, padding: "3px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>{it}</span>
+                ))
+              )}
+            </div>
+          </>
+        )}
       </div>
       <div style={{ fontWeight: 700, fontSize: 13, marginTop: 8 }}>{name}</div>
+      {onUploadPhoto && (
+        <label className="no-print" style={{ display: "inline-block", marginTop: 4, fontSize: 10.5, color: "var(--accent-1)", fontWeight: 600, cursor: "pointer" }}>
+          {imageUrl ? "Change photo" : "+ Add photo"}
+          <input type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
+        </label>
+      )}
     </div>
   );
 }
