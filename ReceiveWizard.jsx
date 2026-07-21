@@ -80,6 +80,7 @@ export default function ReceiveWizard({ presets, devices, fridgeNames, role, dep
   }
 
   const devicesForDept = (devices || []).filter((d) => d.department === form.department);
+  const presetsForDept = form.department ? (presets || []).filter((p) => p.department === form.department) : presets;
 
   const step1Valid = form.name && form.lotNumber && form.quantityReceived && form.expiryDate && form.receivedBy && form.receivedDate;
 
@@ -106,7 +107,7 @@ export default function ReceiveWizard({ presets, devices, fridgeNames, role, dep
               <SearchableSelect
                 value={form.name}
                 onChange={handleNameChange}
-                options={presets.map((p) => p.name)}
+                options={presetsForDept.map((p) => p.name)}
                 placeholder="Search or type a new name"
                 style={{ marginTop: 4 }}
               />
