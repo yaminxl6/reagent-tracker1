@@ -77,7 +77,7 @@ export default function DeviceUsage() {
 }
 
 function DeviceDetail({ deviceName, reagents, logs, onBack }) {
-  const lots = useMemo(() => reagents.filter((r) => r.device === deviceName).sort((a, b) => new Date(b.date_added) - new Date(a.date_added)), [reagents, deviceName]);
+  const lots = useMemo(() => reagents.filter((r) => r.device === deviceName && !r.deleted).sort((a, b) => new Date(b.date_added) - new Date(a.date_added)), [reagents, deviceName]);
   const lotIds = new Set(lots.map((l) => l.id));
   const deviceLogs = useMemo(() => logs.filter((l) => lotIds.has(l.reagent_id) && !l.deleted), [logs, lotIds]);
 
