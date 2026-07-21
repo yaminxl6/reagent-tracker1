@@ -32,6 +32,11 @@ export default function DeviceUsage() {
     const fromReagents = [...new Set(reagents.map((r) => r.device).filter(Boolean))];
     return [...new Set([...fromTable, ...fromReagents])];
   }, [devices, reagents]);
+  const imageByName = useMemo(() => {
+    const map = {};
+    (devices || []).forEach((d) => { if (d.image_url) map[d.name] = d.image_url; });
+    return map;
+  }, [devices]);
 
   if (devices === null) return <div style={{ padding: 40, textAlign: "center", color: "#8A9694" }}>Loading…</div>;
 
@@ -54,7 +59,7 @@ export default function DeviceUsage() {
             // here automatically (it still shows, marked Finished, in history).
             const lots = reagents.filter((r) => r.device === name && !r.deleted && r.current_quantity > 0);
             const itemNames = [...new Set(lots.map((l) => l.name))];
-            return <DeviceCard key={name} name={name} items={itemNames} count={lots.length} onClick={() => setSelected(name)} />;
+            return <DeviceCard key={name} name={name} imageUrl={imageByName[name]} items={itemNames} count={lots.length} onClick={() => setSelected(name)} />;
           })}
         </div>
       )}
@@ -137,23 +142,32 @@ function StatBox({ label, value }) {
 
 // A CSS-drawn analyzer/device: a boxy body with a small screen showing the
 // reagents currently loaded on it.
-function DeviceCard({ name, items, count, onClick }) {
+function DeviceCard({ name, imageUrl, items, count, onClick }) {
   return (
     <button onClick={onClick} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "center" }}>
-      <div style={{ width: "100%", aspectRatio: "3/4", background: "linear-gradient(160deg, #E9EEF3 0%, #CFD9E0 100%)", border: "2px solid #A9B7C4", borderRadius: 10, position: "relative", overflow: "hidden", boxShadow: "0 3px 8px rgba(0,0,0,0.08)" }}>
-        <div style={{ position: "absolute", top: 10, left: 10, right: 10, height: "42%", background: "#1B2B2E", borderRadius: 6, display: "flex", flexWrap: "wrap", gap: 3, alignContent: "flex-start", padding: 6, overflow: "hidden" }}>
-          {items.length === 0 ? (
-            <span style={{ fontSize: 9.5, color: "#5FD9C7", margin: "auto" }}>idle</span>
-          ) : (
-            items.slice(0, 6).map((it) => (
-              <span key={it} style={{ background: "var(--accent-1)", color: "#fff", fontSize: 8.5, fontWeight: 700, padding: "2px 5px", borderRadius: 3, whiteSpace: "nowrap" }}>{it}</span>
-            ))
-          )}
-        </div>
-        <div style={{ position: "absolute", bottom: 10, left: 10, right: 10, display: "flex", gap: 4, justifyContent: "center" }}>
-          {[0, 1, 2].map((i) => <span key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "#8A9694" }} />)}
-        </div>
-        <div style={{ position: "absolute", top: "58%", right: 12, fontSize: 9, color: "#8A9694", fontWeight: 700 }}>{count}</div>
+      <div style={{ width: "100%", aspectRatio: "3/4", background: imageUrl ? "#fff" : "linear-gradient(160deg, #E9EEF3 0%, #CFD9E0 100%)", border: "2px solid #A9B7C4", borderRadius: 10, position: "relative", overflow: "hidden", boxShadow: "0 3px 8px rgba(0,0,0,0.08)" }}>
+        {imageUrl ? (
+          <>
+            <img src={imageUrl} alt={name} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 6, boxSizing: "border-box" }} />
+            <div style={{ position: "absolute", top: 6, right: 6, background: "var(--accent-1)", color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3 }}>{count}</div>
+          </>
+        ) : (
+          <>
+            <div style={{ position: "absolute", top: 10, left: 10, right: 10, height: "42%", background: "#1B2B2E", borderRadius: 6, display: "flex", flexWrap: "wrap", gap: 3, alignContent: "flex-start", padding: 6, overflow: "hidden" }}>
+              {items.length === 0 ? (
+                <span style={{ fontSize: 9.5, color: "#5FD9C7", margin: "auto" }}>idle</span>
+              ) : (
+                items.slice(0, 6).map((it) => (
+                  <span key={it} style={{ background: "var(--accent-1)", color: "#fff", fontSize: 8.5, fontWeight: 700, padding: "2px 5px", borderRadius: 3, whiteSpace: "nowrap" }}>{it}</span>
+                ))
+              )}
+            </div>
+            <div style={{ position: "absolute", bottom: 10, left: 10, right: 10, display: "flex", gap: 4, justifyContent: "center" }}>
+              {[0, 1, 2].map((i) => <span key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "#8A9694" }} />)}
+            </div>
+            <div style={{ position: "absolute", top: "58%", right: 12, fontSize: 9, color: "#8A9694", fontWeight: 700 }}>{count}</div>
+          </>
+        )}
       </div>
       <div style={{ fontWeight: 700, fontSize: 13, marginTop: 8 }}>{name}</div>
     </button>
