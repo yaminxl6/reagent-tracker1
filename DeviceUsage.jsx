@@ -16,11 +16,27 @@ export default function DeviceUsage() {
 
   async function loadAll() {
     const { data: d } = await supabase.from("devices").select("*").order("name");
-    const { data: r } = await supabase.from("reagents").select("*");
-    const { data: l } = await supabase.from("consumption_logs").select("*");
     setDevices(d || []);
-    setReagents(r || []);
-    setLogs(l || []);
+
+    // reagents/consumption_logs can be well over Supabase's default
+    // 1000-row cap on a plain select("*") — paginate so nothing (especially
+    // recently-added active lots) silently gets left out.
+    async function fetchAllRows(table) {
+      const { count } = await supabase.from(table).select("*", { count: "exact", head: true });
+      const total = count || 0;
+      const pageSize = 1000;
+      const pages = Math.ceil(total / pageSize) || 1;
+      const results = await Promise.all(
+        Array.from({ length: pages }, (_, i) =>
+          supabase.from(table).select("*").range(i * pageSize, i * pageSize + pageSize - 1)
+        )
+      );
+      return results.flatMap((r) => r.data || []);
+    }
+
+    const [r, l] = await Promise.all([fetchAllRows("reagents"), fetchAllRows("consumption_logs")]);
+    setReagents(r);
+    setLogs(l);
   }
   useEffect(() => { loadAll(); }, []);
 
