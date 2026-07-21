@@ -864,7 +864,6 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
   const matchedLots = useMemo(() => {
     const term = searchLot.trim().toLowerCase();
     return reagents
-      .filter((r) => !r.deleted)
       .filter((r) => (term
         ? (r.lot_number || "").toLowerCase().includes(term)
           || (r.name || "").toLowerCase().includes(term)

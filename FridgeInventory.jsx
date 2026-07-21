@@ -91,7 +91,7 @@ export default function FridgeInventory({ username, logActivity }) {
   const deviceSuggestions = useMemo(() => [...new Set((all || []).map((r) => r.device_group).filter(Boolean))], [all]);
   const itemCountFor = (name) => (all || []).filter((r) => r.refrigerator_name === name && r.month === month && r.item_name).length;
 
-  const currentRows = (all || []).filter((r) => r.month === month && r.refrigerator_name === refrigeratorName);
+  const currentRows = useMemo(() => (all || []).filter((r) => r.month === month && r.refrigerator_name === refrigeratorName), [all, month, refrigeratorName]);
   const _now = new Date();
   const today = new Date(_now.getTime() - _now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   function isArchivedRow(r) {
