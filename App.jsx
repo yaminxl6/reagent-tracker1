@@ -310,6 +310,29 @@ export default function App() {
     loadAll();
   }
 
+  // One tap: "I loaded this lot into the device and it's now empty." Logs
+  // the remaining quantity as used (so it shows FINISHED in Reports, not a
+  // mysterious gap) and takes it off the active Stock/Dashboard immediately
+  // — instead of waiting for it to later get flagged as "expired in device".
+  async function finishReagent(id) {
+    const item = reagents.find((r) => r.id === id);
+    if (!item || item.current_quantity <= 0) return;
+    if (!confirm(`Mark ${item.name} (Lot ${item.lot_number}) as fully used/removed from the device? This logs the remaining ${item.current_quantity} ${item.unit} as used.`)) return;
+    const { error } = await supabase.rpc("record_consumption", {
+      p_reagent_id: id,
+      p_amount: item.current_quantity,
+      p_date: todayISO(),
+      p_used_by: username || "",
+      p_note: "Marked finished / removed from device",
+      p_tested_by_qc: false,
+      p_allow_overuse: false,
+    });
+    if (error) { alert("Could not save: " + error.message); return; }
+    await logActivity("log_use", "log", `${item.name} — Lot ${item.lot_number} marked finished/removed from device by ${username}`);
+    loadAll();
+  }
+
+
   async function saveEditedReagent(updated) {
     await supabase.from("reagents").update({
       lot_number: updated.lot_number,
@@ -564,7 +587,7 @@ export default function App() {
             role={role}
             expiryWarningDays={config?.expiry_warning_days}
             onBack={() => setTab("stock")}
-            onEditReagent={setEditReagent} onDeleteReagent={deleteReagent}
+            onEditReagent={setEditReagent} onDeleteReagent={deleteReagent} onFinishReagent={finishReagent}
             onEditLog={setEditLog} onDeleteLog={deleteLog}
           />
         )}
@@ -829,7 +852,7 @@ function Dashboard({ groups, allNames, counts, departments, role, onDeleteReagen
   );
 }
 
-function DetailView({ group, logs, role, expiryWarningDays, onBack, onEditReagent, onDeleteReagent, onEditLog, onDeleteLog }) {
+function DetailView({ group, logs, role, expiryWarningDays, onBack, onEditReagent, onDeleteReagent, onFinishReagent, onEditLog, onDeleteLog }) {
   const last30 = logs.filter((l) => daysBetween(todayISO(), l.date) <= 30);
   const consumed30 = last30.reduce((s, l) => s + l.amount, 0);
   const avgDaily = consumed30 / 30;
@@ -878,6 +901,9 @@ function DetailView({ group, logs, role, expiryWarningDays, onBack, onEditReagen
                 <div style={{ fontSize: 13 }}>{it.current_quantity}/{it.quantity_received} {it.unit}</div>
                 <div style={{ fontSize: 12.5, color: m.color, fontWeight: 600 }}>{dExp < 0 ? `expired ${Math.abs(dExp)}d ago` : `${dExp}d left`}</div>
                 <button onClick={() => onEditReagent(it)} style={{ background: "none", border: "none", color: "#8A9694" }}><Pencil size={14} /></button>
+                {it.current_quantity > 0 && (
+                  <button onClick={() => onFinishReagent(it.id)} title="Mark finished / removed from device" style={{ background: "none", border: "1px solid #C7D1CE", color: "#0F7173", borderRadius: 6, padding: "3px 8px", fontSize: 11, fontWeight: 700 }}>Finished</button>
+                )}
                 {(["admin","super","owner"].includes(role)) && <button onClick={() => onDeleteReagent(it.id)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={14} /></button>}
               </div>
               {failedItems.length > 0 && (
