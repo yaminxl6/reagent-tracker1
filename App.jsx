@@ -1003,7 +1003,12 @@ function Reports({ reagents, logs, departments, role, onPurgeReagent, onPurgeLog
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
                 <div style={{ fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}>
                   {r.name}
-                  {r.deleted && <span className="no-print" style={{ fontSize: 10, fontWeight: 700, color: "#C1432B", background: "#FBEAE6", padding: "2px 7px", borderRadius: 4 }}>DELETED by {r.deleted_by} · {fmtDateTime(r.deleted_at)}</span>}
+                  {r.deleted && (() => {
+                    const isFinished = r.current_quantity <= 0 || (r.disposed_by && r.disposed_by !== "");
+                    return isFinished
+                      ? <span className="no-print" style={{ fontSize: 10, fontWeight: 700, color: "#8A6D3B", background: "#FBF3E6", padding: "2px 7px", borderRadius: 4 }}>FINISHED{r.disposed_by ? ` · disposed by ${r.disposed_by} on ${r.disposed_date || ""}` : ""}</span>
+                      : <span className="no-print" style={{ fontSize: 10, fontWeight: 700, color: "#C1432B", background: "#FBEAE6", padding: "2px 7px", borderRadius: 4 }}>DELETED by {r.deleted_by} · {fmtDateTime(r.deleted_at)}</span>;
+                  })()}
                   {r.deleted && ["super","owner"].includes(role) && (
                     <button onClick={() => onPurgeReagent(r.id)} className="no-print" style={{ background: "none", border: "1px solid #C1432B", color: "#C1432B", borderRadius: 6, padding: "3px 9px", fontSize: 10.5, fontWeight: 700 }}>Erase permanently</button>
                   )}
