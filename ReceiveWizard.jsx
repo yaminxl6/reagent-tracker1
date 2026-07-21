@@ -90,32 +90,7 @@ export default function ReceiveWizard({ presets, reagents, devices, fridgeNames,
   const computedQty = Number(form.boxesReceived || 0) * Number(form.kitsPerBox || 1);
   const step1Valid = form.name && form.lotNumber && form.boxesReceived && form.expiryDate && form.receivedBy && form.receivedDate;
 
-  async function finish() {
-    // If this exact item is already loaded and still has stock on the same
-    // device, ask right here whether that old lot should be marked
-    // finished/removed — instead of a separate step the person has to
-    // remember to do afterward.
-    if (form.device) {
-      const existing = (reagents || []).find(
-        (r) => !r.deleted && r.name === form.name && r.device === form.device && r.current_quantity > 0
-      );
-      if (existing) {
-        const wantsToFinish = confirm(
-          `${form.device} already has an active lot of "${form.name}" — Lot ${existing.lot_number} (${existing.current_quantity} ${existing.unit} left).\n\nMark that old lot as fully finished/removed now that you're loading this new one?`
-        );
-        if (wantsToFinish) {
-          await supabase.rpc("record_consumption", {
-            p_reagent_id: existing.id,
-            p_amount: existing.current_quantity,
-            p_date: form.receivedDate,
-            p_used_by: form.receivedBy,
-            p_note: "Replaced by new lot on receipt",
-            p_tested_by_qc: false,
-            p_allow_overuse: false,
-          });
-        }
-      }
-    }
+  function finish() {
     onSubmit({
       ...form,
       quantityReceived: computedQty,

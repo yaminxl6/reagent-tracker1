@@ -1354,12 +1354,36 @@ function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
     setShowScanner(false);
   }
 
-  function submit() {
+  async function submit() {
     if (!fefo || !amount || !usedBy) return;
     if (overAmount && !markFinished) return; // blocked — warning is shown under the field
     const finalAmount = markFinished ? fefo.current_quantity : Number(amount);
     const finalNote = markFinished ? (note ? `${note} — marked finished / removed from device` : "Marked finished / removed from device") : note;
     onSubmit({ reagentId: fefo.id, amount: finalAmount, date, usedBy, note: finalNote, testedByQC });
+
+    // If another active lot of this same reagent on the same device exists
+    // (e.g. staff pulled a fresh one from the fridge to replace one that
+    // just ran out), ask right here whether to also finish the old one —
+    // instead of leaving two lots both showing "active" for the device.
+    const otherActive = reagents.find(
+      (r) => !r.deleted && r.id !== fefo.id && r.name === fefo.name && r.device === fefo.device && r.current_quantity > 0
+    );
+    if (otherActive) {
+      const alsoFinish = confirm(
+        `${fefo.device} also has another active lot of "${fefo.name}" — Lot ${otherActive.lot_number} (${otherActive.current_quantity} ${otherActive.unit} left).\n\nMark that one as finished/removed too? Choose No to keep both running on the device.`
+      );
+      if (alsoFinish) {
+        await supabase.rpc("record_consumption", {
+          p_reagent_id: otherActive.id,
+          p_amount: otherActive.current_quantity,
+          p_date: date,
+          p_used_by: usedBy,
+          p_note: "Removed from device — replaced by another lot",
+          p_tested_by_qc: false,
+          p_allow_overuse: false,
+        });
+      }
+    }
   }
 
   if (reagents.length === 0) {
