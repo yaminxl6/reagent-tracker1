@@ -207,6 +207,17 @@ export default function App() {
       inspection_notes: entry.inspectionNotes,
     });
     await logActivity("receive", "reagent", `${entry.name} — Lot ${entry.lotNumber}, ${entry.quantityReceived} ${entry.unit}, received by ${entry.receivedBy}`);
+    if (entry.fridgeName && entry.fridgeName !== ROOM_TEMP) {
+      const month = (entry.receivedDate || todayISO()).slice(0, 7);
+      const { data: existingRows } = await supabase.from("fridge_inventory").select("row_order").eq("month", month).eq("refrigerator_name", entry.fridgeName);
+      const maxOrder = (existingRows || []).reduce((m, r) => Math.max(m, r.row_order || 0), 0);
+      await supabase.from("fridge_inventory").insert({
+        month, refrigerator_name: entry.fridgeName, counted_by: entry.receivedBy || "",
+        added_by: entry.receivedBy || "", device_group: entry.device || "",
+        item_name: entry.name, lot_number: entry.lotNumber, quantity: String(entry.quantityReceived),
+        expiry_date: entry.expiryDate, row_order: maxOrder + 1,
+      });
+    }
     setShowWizard(false);
     loadAll();
   }
@@ -237,6 +248,17 @@ export default function App() {
         low_stock_threshold: Number(entry.lowStockThreshold) || Math.ceil(Number(entry.quantityReceived) * ((config.low_stock_default_percent || 15) / 100)),
         intact_container: true, complete_compound: true, expiration_validity: true, lot_matches_kit: true, storage_condition_ok: true,
       });
+      if (fridgeName && fridgeName !== ROOM_TEMP) {
+        const month = (entry.receivedDate || todayISO()).slice(0, 7);
+        const { data: existingRows } = await supabase.from("fridge_inventory").select("row_order").eq("month", month).eq("refrigerator_name", fridgeName);
+        const maxOrder = (existingRows || []).reduce((m, r) => Math.max(m, r.row_order || 0), 0);
+        await supabase.from("fridge_inventory").insert({
+          month, refrigerator_name: fridgeName, counted_by: entry.receivedBy || "",
+          added_by: entry.receivedBy || "", device_group: entry.device || "",
+          item_name: entry.name, lot_number: entry.lotNumber, quantity: String(entry.quantityReceived),
+          expiry_date: entry.expiryDate, row_order: maxOrder + 1,
+        });
+      }
     }
     await logActivity("bulk_import", "reagent", `Imported ${rows.length} lot(s) from file`);
     setShowImport(false);
