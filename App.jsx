@@ -166,6 +166,21 @@ export default function App() {
     setUsername("");
   }
 
+  // Auto sign-out after 30 minutes with no mouse/keyboard/touch activity,
+  // so a shared workstation doesn't stay logged in indefinitely.
+  useEffect(() => {
+    if (!role) return;
+    const TIMEOUT_MS = 30 * 60 * 1000;
+    let timer = setTimeout(logout, TIMEOUT_MS);
+    const reset = () => { clearTimeout(timer); timer = setTimeout(logout, TIMEOUT_MS); };
+    const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
+    events.forEach((ev) => window.addEventListener(ev, reset));
+    return () => {
+      clearTimeout(timer);
+      events.forEach((ev) => window.removeEventListener(ev, reset));
+    };
+  }, [role]);
+
   async function addReagent(entry) {
     const dup = reagents.find((r) => !r.deleted && r.name === entry.name && r.lot_number === entry.lotNumber);
     if (dup && !confirm(`Lot ${entry.lotNumber} already exists for ${entry.name}. Add it again anyway?`)) return;
