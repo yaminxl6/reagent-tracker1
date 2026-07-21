@@ -32,6 +32,13 @@ export default function FridgeInventory({ username, logActivity }) {
   const [saveMsg, setSaveMsg] = useState("");
   const [deletedIds, setDeletedIds] = useState([]);
   const [tempLogs, setTempLogs] = useState([]);
+  const [liveStock, setLiveStock] = useState([]);
+
+  async function loadLiveStock(fridgeName) {
+    if (!fridgeName) { setLiveStock([]); return; }
+    const { data } = await supabase.from("reagents").select("*").eq("fridge_name", fridgeName).eq("deleted", false).order("name");
+    setLiveStock((data || []).filter((r) => r.current_quantity > 0));
+  }
 
   async function loadAll() {
     const { data } = await supabase.from("fridge_inventory").select("*").order("row_order");
@@ -44,6 +51,30 @@ export default function FridgeInventory({ username, logActivity }) {
     setTempLogs(data || []);
   }
   useEffect(() => { loadAll(); loadTemps(); }, []);
+  useEffect(() => { loadLiveStock(refrigeratorName); }, [refrigeratorName]);
+
+  // Opening a fridge for a month that has no count yet: carry forward the
+  // most recent prior month's items as a starting point, so staff only
+  // update quantities/expiry instead of re-typing the whole sheet.
+  useEffect(() => {
+    if (!refrigeratorName || all === null) return;
+    const existing = all.filter((r) => r.month === month && r.refrigerator_name === refrigeratorName);
+    if (existing.length > 0) return;
+    const priorRows = all.filter((r) => r.refrigerator_name === refrigeratorName && r.month < month);
+    if (priorRows.length === 0) return;
+    const latestPriorMonth = priorRows.reduce((m, r) => (r.month > m ? r.month : m), priorRows[0].month);
+    const carryOver = priorRows
+      .filter((r) => r.month === latestPriorMonth)
+      .map((r, i) => ({
+        id: `temp-${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`,
+        month, refrigerator_name: refrigeratorName, counted_by: countedBy,
+        added_by: username || "", edited_by: "", edited_at: null,
+        device_group: r.device_group, item_name: r.item_name, lot_number: r.lot_number,
+        quantity: r.quantity, expiry_date: r.expiry_date, row_order: r.row_order,
+      }));
+    setAll((a) => [...a, ...carryOver]);
+    setDirty(true);
+  }, [refrigeratorName, month, all]);
 
   async function renameFridge(oldName, newName) {
     if (!newName || newName === oldName) return;
@@ -83,6 +114,7 @@ export default function FridgeInventory({ username, logActivity }) {
     const tempRow = {
       id: `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       month, refrigerator_name: refrigeratorName, counted_by: countedBy,
+      added_by: username || "", edited_by: "", edited_at: null,
       device_group: deviceGroup, item_name: "", lot_number: "", quantity: "", expiry_date: null, row_order: maxOrder + 1,
     };
     setAll((a) => [...a, tempRow]);
@@ -96,7 +128,12 @@ export default function FridgeInventory({ username, logActivity }) {
   }
 
   function updateRow(id, field, value) {
-    setAll((a) => a.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
+    setAll((a) => a.map((r) => {
+      if (r.id !== id) return r;
+      const updated = { ...r, [field]: value };
+      if (!isTempId(id)) { updated.edited_by = username || ""; updated.edited_at = new Date().toISOString(); }
+      return updated;
+    }));
     setDirty(true);
   }
 
@@ -121,6 +158,7 @@ export default function FridgeInventory({ username, logActivity }) {
     for (const r of toUpdate) {
       await supabase.from("fridge_inventory").update({
         item_name: r.item_name, lot_number: r.lot_number, quantity: r.quantity, expiry_date: r.expiry_date, counted_by: r.counted_by,
+        edited_by: r.edited_by || "", edited_at: r.edited_at || null,
       }).eq("id", r.id);
     }
     await logActivity?.("fridge_count", "fridge", `${refrigeratorName} — ${month}: ${toInsert.length} new row(s), ${toUpdate.length} updated`);
@@ -213,6 +251,8 @@ export default function FridgeInventory({ username, logActivity }) {
             }}
           />
 
+          <LiveStockPanel stock={liveStock} />
+
           <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #C7D1CE" }}>
             <thead>
               <tr>
@@ -220,6 +260,7 @@ export default function FridgeInventory({ username, logActivity }) {
                 <th style={thStyle}>Unit</th>
                 <th style={thStyle}>Quantity</th>
                 <th style={thStyle}>Expiry date</th>
+                <th className="no-print" style={{ ...thStyle, width: 140 }}>Signed</th>
                 <th className="no-print" style={{ ...thStyle, width: 30 }}></th>
               </tr>
             </thead>
@@ -227,7 +268,7 @@ export default function FridgeInventory({ username, logActivity }) {
               {Object.entries(groups).map(([section, rows]) => (
                 <React.Fragment key={section}>
                   <tr>
-                    <td colSpan={5} style={{ textAlign: "center", fontWeight: 700, background: "#F7F9F8", border: "1px solid #C7D1CE", padding: "6px 0" }}>#{section}</td>
+                    <td colSpan={6} style={{ textAlign: "center", fontWeight: 700, background: "#F7F9F8", border: "1px solid #C7D1CE", padding: "6px 0" }}>#{section}</td>
                   </tr>
                   {rows.map((r) => (
                     <tr key={r.id}>
@@ -243,13 +284,20 @@ export default function FridgeInventory({ username, logActivity }) {
                       <td style={tdStyle}>
                         <input type="date" lang="en-US" dir="ltr" style={cellInputStyle} value={r.expiry_date || ""} onChange={(e) => updateRow(r.id, "expiry_date", e.target.value)} />
                       </td>
+                      <td className="no-print" style={{ ...tdStyle, fontSize: 11, color: "#7B8E8A" }}>
+                        {r.edited_by ? (
+                          <span title={r.edited_at ? new Date(r.edited_at).toLocaleString() : ""}>edited: {r.edited_by}</span>
+                        ) : r.added_by ? (
+                          <span>added: {r.added_by}</span>
+                        ) : "—"}
+                      </td>
                       <td className="no-print" style={{ ...tdStyle, textAlign: "center" }}>
                         <button onClick={() => deleteRow(r.id)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={13} /></button>
                       </td>
                     </tr>
                   ))}
                   <tr className="no-print">
-                    <td colSpan={5} style={{ border: "1px solid #C7D1CE", padding: 4 }}>
+                    <td colSpan={6} style={{ border: "1px solid #C7D1CE", padding: 4 }}>
                       <button onClick={() => addRow(section)} style={{ background: "none", border: "none", color: "var(--accent-1)", fontSize: 12, fontWeight: 600 }}>+ Add row to #{section}</button>
                     </td>
                   </tr>
@@ -269,6 +317,53 @@ export default function FridgeInventory({ username, logActivity }) {
             </button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Real current stock — pulled live from the reagents table (what's actually
+// received and not yet used up), linked via each lot's fridge_name. This is
+// separate from the manual monthly count below, which matches the paper form.
+function LiveStockPanel({ stock }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="no-print" style={{ border: "1px solid #E1E8E5", borderRadius: 8, padding: "10px 12px", marginBottom: 14, background: "#EAF6F4" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>Current stock actually in this fridge ({stock.length} lot(s), live from device records)</div>
+        <button onClick={() => setOpen((o) => !o)} style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 600 }}>
+          {open ? "Hide" : "Show"}
+        </button>
+      </div>
+      {open && (
+        stock.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: "#8A9694", marginTop: 8 }}>No active lots currently linked to this fridge.</div>
+        ) : (
+          <div style={{ marginTop: 10, maxHeight: 260, overflowY: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={thStyleSmall}>Reagent</th>
+                  <th style={thStyleSmall}>Lot</th>
+                  <th style={thStyleSmall}>Device</th>
+                  <th style={thStyleSmall}>Qty left</th>
+                  <th style={thStyleSmall}>Expiry</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stock.map((r) => (
+                  <tr key={r.id}>
+                    <td style={tdStyleSmall}>{r.name}</td>
+                    <td style={tdStyleSmall}>{r.lot_number}</td>
+                    <td style={tdStyleSmall}>{r.device || "—"}</td>
+                    <td style={tdStyleSmall}>{r.current_quantity} {r.unit}</td>
+                    <td style={tdStyleSmall}>{r.expiry_date}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
       )}
     </div>
   );
