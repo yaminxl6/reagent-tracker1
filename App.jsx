@@ -1301,7 +1301,11 @@ const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
 
 function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
   const [typeFilter, setTypeFilter] = useState("");
-  const filteredReagents = typeFilter ? reagents.filter((r) => r.item_type === typeFilter) : reagents;
+  const [deviceFilter, setDeviceFilter] = useState("");
+  const deviceOptions = [...new Set(reagents.map((r) => r.device).filter(Boolean))].sort();
+  const filteredReagents = reagents
+    .filter((r) => (typeFilter ? r.item_type === typeFilter : true))
+    .filter((r) => (deviceFilter ? r.device === deviceFilter : true));
   const names = [...new Set(filteredReagents.map((r) => r.name))];
   const [name, setName] = useState(names[0] || "");
   const [amount, setAmount] = useState("");
@@ -1336,7 +1340,14 @@ function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
 
   function changeType(t) {
     setTypeFilter(t);
-    const list = t ? reagents.filter((r) => r.item_type === t) : reagents;
+    const list = reagents.filter((r) => (t ? r.item_type === t : true)).filter((r) => (deviceFilter ? r.device === deviceFilter : true));
+    const firstName = [...new Set(list.map((r) => r.name))][0] || "";
+    setName(firstName);
+  }
+
+  function changeDevice(d) {
+    setDeviceFilter(d);
+    const list = reagents.filter((r) => (typeFilter ? r.item_type === typeFilter : true)).filter((r) => (d ? r.device === d : true));
     const firstName = [...new Set(list.map((r) => r.name))][0] || "";
     setName(firstName);
   }
@@ -1362,14 +1373,22 @@ function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
   return (
     <Modal title="Log daily consumption" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <label style={labelStyle}>Type
-          <select style={inputStyle} value={typeFilter} onChange={(e) => changeType(e.target.value)}>
-            <option value="">All types</option>
-            <option value="Reagent">Reagent</option>
-            <option value="QC">QC</option>
-            <option value="Cal">Cal</option>
-          </select>
-        </label>
+        <div style={{ display: "flex", gap: 10 }}>
+          <label style={{ ...labelStyle, flex: 1 }}>Type
+            <select style={inputStyle} value={typeFilter} onChange={(e) => changeType(e.target.value)}>
+              <option value="">All types</option>
+              <option value="Reagent">Reagent</option>
+              <option value="QC">QC</option>
+              <option value="Cal">Cal</option>
+            </select>
+          </label>
+          <label style={{ ...labelStyle, flex: 1 }}>Device
+            <select style={inputStyle} value={deviceFilter} onChange={(e) => changeDevice(e.target.value)}>
+              <option value="">All devices</option>
+              {deviceOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </label>
+        </div>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
           <label style={{ ...labelStyle, flex: 1 }}>Reagent (click to browse, or type to search)
             <SearchableSelect value={name} onChange={setName} options={names} placeholder="Search reagent name" allowCustom={false} style={{ marginTop: 4 }} />

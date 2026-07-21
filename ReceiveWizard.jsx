@@ -21,7 +21,7 @@ export default function ReceiveWizard({ presets, reagents, devices, fridgeNames,
 
   const [form, setForm] = useState({
     name: "", department: departments[0] || "", unit: "mL", itemType: "Reagent", device: "", fridgeName: "",
-    lotNumber: "", quantityReceived: "", expiryDate: "",
+    lotNumber: "", boxesReceived: "1", kitsPerBox: "", quantityReceived: "", expiryDate: "",
     receivedBy: username || "", receivedDate: new Date().toISOString().slice(0, 10),
     lowStockThreshold: "",
     intact_container: true,
@@ -86,13 +86,14 @@ export default function ReceiveWizard({ presets, reagents, devices, fridgeNames,
     : [...new Set((reagents || []).filter((r) => !r.deleted).map((r) => r.name))];
   const itemOptions = [...new Set([...presetsForDept.map((p) => p.name), ...realNamesForDept])].sort();
 
-  const step1Valid = form.name && form.lotNumber && form.quantityReceived && form.expiryDate && form.receivedBy && form.receivedDate;
+  const computedQty = Number(form.boxesReceived || 0) * Number(form.kitsPerBox || 1);
+  const step1Valid = form.name && form.lotNumber && form.boxesReceived && form.expiryDate && form.receivedBy && form.receivedDate;
 
   function finish() {
     onSubmit({
       ...form,
-      quantityReceived: Number(form.quantityReceived),
-      lowStockThreshold: Number(form.lowStockThreshold) || Math.ceil(Number(form.quantityReceived) * 0.15),
+      quantityReceived: computedQty,
+      lowStockThreshold: Number(form.lowStockThreshold) || Math.ceil(computedQty * 0.15),
     });
   }
 
@@ -157,8 +158,12 @@ export default function ReceiveWizard({ presets, reagents, devices, fridgeNames,
             </div>
             <label style={labelStyle}>Expiry date<input type="date" lang="en-US" dir="ltr" style={inputStyle} value={form.expiryDate} onChange={set("expiryDate")} /></label>
             <div style={{ display: "flex", gap: 10 }}>
-              <label style={{ ...labelStyle, flex: 1 }}>Quantity received<input type="number" style={inputStyle} value={form.quantityReceived} onChange={set("quantityReceived")} /></label>
+              <label style={{ ...labelStyle, flex: 1 }}>Boxes received<input type="number" min="1" style={inputStyle} value={form.boxesReceived} onChange={set("boxesReceived")} /></label>
+              <label style={{ ...labelStyle, flex: 1 }}>Kits per box (optional)<input type="number" min="1" placeholder="e.g. 4" style={inputStyle} value={form.kitsPerBox} onChange={set("kitsPerBox")} /></label>
               <label style={{ ...labelStyle, flex: 1 }}>Low stock alert below<input type="number" style={inputStyle} value={form.lowStockThreshold} onChange={set("lowStockThreshold")} placeholder="auto" /></label>
+            </div>
+            <div style={{ fontSize: 12.5, color: "#516361", background: "#F0F3F2", borderRadius: 6, padding: "6px 10px" }}>
+              Total tracked as: <b>{computedQty || 0} {form.unit}</b> ({form.boxesReceived || 0} box{Number(form.boxesReceived) === 1 ? "" : "es"}{form.kitsPerBox ? ` × ${form.kitsPerBox} kit(s) per box` : ""})
             </div>
             <label style={labelStyle}>Notes (optional)
               <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} value={form.receivingNotes} onChange={set("receivingNotes")} placeholder="Any additional comment about this delivery" />
