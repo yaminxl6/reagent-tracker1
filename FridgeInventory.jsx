@@ -9,7 +9,7 @@ const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
 const todayMonth = () => new Date().toISOString().slice(0, 7);
 // Your lab's fridges — always shown as cards here, even before any stock
 // count or temperature reading has been entered for them yet.
-const BASE_FRIDGES = ["R011", "R014", "R009", "R01", "Lab0202", "R012", "R0008"];
+const BASE_FRIDGES = ["R011", "R014", "R009", "Lab0202", "Lab0007", "Lab0005", "Lab00014"];
 const todayISO = () => {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
