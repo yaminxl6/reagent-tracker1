@@ -15,7 +15,7 @@ const INSPECTION_ITEMS = [
 const inputStyle = { width: "100%", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 11px", fontSize: 14, marginTop: 4, boxSizing: "border-box" };
 const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
 
-export default function ReceiveWizard({ presets, devices, fridgeNames, role, departments, username, onClose, onSubmit }) {
+export default function ReceiveWizard({ presets, reagents, devices, fridgeNames, role, departments, username, onClose, onSubmit }) {
   const [step, setStep] = useState(1);
   const [showScanner, setShowScanner] = useState(false);
 
@@ -80,6 +80,11 @@ export default function ReceiveWizard({ presets, devices, fridgeNames, role, dep
   }
 
   const devicesForDept = (devices || []).filter((d) => d.department === form.department);
+  const presetsForDept = form.department ? (presets || []).filter((p) => p.department === form.department) : presets;
+  const realNamesForDept = form.department
+    ? [...new Set((reagents || []).filter((r) => !r.deleted && r.department === form.department).map((r) => r.name))]
+    : [...new Set((reagents || []).filter((r) => !r.deleted).map((r) => r.name))];
+  const itemOptions = [...new Set([...presetsForDept.map((p) => p.name), ...realNamesForDept])].sort();
 
   const step1Valid = form.name && form.lotNumber && form.quantityReceived && form.expiryDate && form.receivedBy && form.receivedDate;
 
@@ -106,7 +111,7 @@ export default function ReceiveWizard({ presets, devices, fridgeNames, role, dep
               <SearchableSelect
                 value={form.name}
                 onChange={handleNameChange}
-                options={presets.map((p) => p.name)}
+                options={itemOptions}
                 placeholder="Search or type a new name"
                 style={{ marginTop: 4 }}
               />

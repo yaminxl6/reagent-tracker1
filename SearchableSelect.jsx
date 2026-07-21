@@ -27,7 +27,20 @@ export default function SearchableSelect({ value, onChange, options, placeholder
     };
   }, [query, options, allowCustom, value, onChange]);
 
-  const filtered = options.filter((o) => o.toLowerCase().includes(query.trim().toLowerCase()));
+  const q = query.trim().toLowerCase();
+  const filtered = options
+    .filter((o) => o.toLowerCase().includes(q))
+    .map((o) => {
+      const lower = o.toLowerCase();
+      let rank;
+      if (lower === q) rank = 0;
+      else if (lower.startsWith(q)) rank = 1;
+      else if (new RegExp("\\b" + q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(lower)) rank = 2;
+      else rank = 3;
+      return { o, rank };
+    })
+    .sort((a, b) => (a.rank - b.rank) || a.o.localeCompare(b.o))
+    .map((x) => x.o);
 
   function pick(opt) {
     setQuery(opt);
