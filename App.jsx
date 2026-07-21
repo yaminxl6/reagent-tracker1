@@ -1307,7 +1307,7 @@ function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
     .filter((r) => (typeFilter ? r.item_type === typeFilter : true))
     .filter((r) => (deviceFilter ? r.device === deviceFilter : true));
   const names = [...new Set(filteredReagents.map((r) => r.name))];
-  const [name, setName] = useState(names[0] || "");
+  const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayISO());
   const [usedBy, setUsedBy] = useState(username || "");
@@ -1340,16 +1340,12 @@ function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
 
   function changeType(t) {
     setTypeFilter(t);
-    const list = reagents.filter((r) => (t ? r.item_type === t : true)).filter((r) => (deviceFilter ? r.device === deviceFilter : true));
-    const firstName = [...new Set(list.map((r) => r.name))][0] || "";
-    setName(firstName);
+    setName("");
   }
 
   function changeDevice(d) {
     setDeviceFilter(d);
-    const list = reagents.filter((r) => (typeFilter ? r.item_type === typeFilter : true)).filter((r) => (d ? r.device === d : true));
-    const firstName = [...new Set(list.map((r) => r.name))][0] || "";
-    setName(firstName);
+    setName("");
   }
 
   function handleScan(text) {
