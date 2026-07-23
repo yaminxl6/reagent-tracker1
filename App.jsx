@@ -1313,7 +1313,6 @@ function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
   const [usedBy, setUsedBy] = useState(username || "");
   const [note, setNote] = useState("");
   const [testedByQC, setTestedByQC] = useState(false);
-  const [markFinished, setMarkFinished] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [selectedLotId, setSelectedLotId] = useState(""); // "" = follow FEFO suggestion
 
@@ -1327,16 +1326,9 @@ function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
   const fefo = (selectedLotId && lots.find((r) => r.id === selectedLotId)) || fefoDefault;
   const overAmount = fefo && amount !== "" && Number(amount) > fefo.current_quantity;
 
-  // "Mark this lot finished" — one tap for "I just loaded it into the
-  // device and it's empty now": takes over the amount field with whatever
-  // is actually left on the lot, so the log always fully zeroes it out.
-  React.useEffect(() => {
-    if (markFinished && fefo) setAmount(String(fefo.current_quantity));
-  }, [markFinished, fefo]);
-
   // Reset the manual lot choice whenever the reagent name changes, so a
   // leftover selection from a different reagent can't get used by mistake.
-  React.useEffect(() => { setSelectedLotId(""); setMarkFinished(false); }, [name]);
+  React.useEffect(() => { setSelectedLotId(""); }, [name]);
 
   function changeType(t) {
     setTypeFilter(t);
@@ -1356,10 +1348,8 @@ function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
 
   async function submit() {
     if (!fefo || !amount || !usedBy) return;
-    if (overAmount && !markFinished) return; // blocked — warning is shown under the field
-    const finalAmount = markFinished ? fefo.current_quantity : Number(amount);
-    const finalNote = markFinished ? (note ? `${note} — marked finished / removed from device` : "Marked finished / removed from device") : note;
-    onSubmit({ reagentId: fefo.id, amount: finalAmount, date, usedBy, note: finalNote, testedByQC });
+    if (overAmount) return; // blocked — warning is shown under the field
+    onSubmit({ reagentId: fefo.id, amount: Number(amount), date, usedBy, note, testedByQC });
 
     // If another active lot of this same reagent on the same device exists
     // (e.g. staff pulled a fresh one from the fridge to replace one that
@@ -1440,17 +1430,13 @@ function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
             All lots of {name} are already used up (0 left) — receive new stock before logging more usage.
           </div>
         )}
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "#0F7173", background: "#EAF6F4", border: "1px solid #CFE9E5", borderRadius: 7, padding: "8px 10px" }}>
-          <input type="checkbox" checked={markFinished} onChange={(e) => setMarkFinished(e.target.checked)} disabled={!fefo} />
-          Loaded into the device — mark this lot fully finished now
-        </label>
         <div style={{ display: "flex", gap: 10 }}>
           <label style={{ ...labelStyle, flex: 1 }}>Amount used ({fefo?.unit || "unit"})
-            <input type="number" min="0" max={fefo?.current_quantity ?? undefined} style={{ ...inputStyle, ...(overAmount ? { borderColor: "#C1432B" } : {}) }} value={amount} onChange={(e) => setAmount(e.target.value)} disabled={!fefo || markFinished} />
+            <input type="number" min="0" max={fefo?.current_quantity ?? undefined} style={{ ...inputStyle, ...(overAmount ? { borderColor: "#C1432B" } : {}) }} value={amount} onChange={(e) => setAmount(e.target.value)} disabled={!fefo} />
           </label>
           <label style={{ ...labelStyle, flex: 1 }}>Date<input type="date" lang="en-US" dir="ltr" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} /></label>
         </div>
-        {overAmount && !markFinished && (
+        {overAmount && (
           <div style={{ color: "#C1432B", fontSize: 12, marginTop: -6 }}>Only {fefo.current_quantity} {fefo.unit} left in this lot — can't log more than that.</div>
         )}
         <label style={labelStyle}>Used by (signed in as)<input style={{ ...inputStyle, background: "#F0F3F2", color: "#516361" }} value={usedBy} readOnly /></label>
