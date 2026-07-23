@@ -1365,7 +1365,10 @@ function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
     // (e.g. staff pulled a fresh one from the fridge to replace one that
     // just ran out), ask right here whether to also finish the old one —
     // instead of leaving two lots both showing "active" for the device.
-    const otherActive = reagents.find(
+    // Only Reagent bottles are meaningfully "loaded into the device" —
+    // Cal/QC gets drawn off and discarded per run, so there's no sense
+    // asking about a second active lot "in the device" for those.
+    const otherActive = fefo.item_type === "Reagent" && reagents.find(
       (r) => !r.deleted && r.id !== fefo.id && r.name === fefo.name && r.device === fefo.device && r.current_quantity > 0
     );
     if (otherActive) {
