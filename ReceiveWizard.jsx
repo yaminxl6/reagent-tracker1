@@ -21,7 +21,7 @@ export default function ReceiveWizard({ presets, reagents, devices, fridgeNames,
   const [showScanner, setShowScanner] = useState(false);
 
   const [form, setForm] = useState({
-    name: "", department: departments[0] || "", unit: "mL", itemType: "Reagent", device: "", fridgeName: "",
+    name: "", department: departments[0] || "", unit: "box", itemType: "Reagent", device: "", fridgeName: "",
     lotNumber: "", boxesReceived: "1", kitsPerBox: "", quantityReceived: "", expiryDate: "",
     receivedBy: username || "", receivedDate: new Date().toISOString().slice(0, 10),
     lowStockThreshold: "",

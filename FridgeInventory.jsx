@@ -60,6 +60,28 @@ export default function FridgeInventory({ username, logActivity }) {
     setFridgePhotos(photoMap);
   }
   useEffect(() => { loadOwners(); }, []);
+
+  // Canonical, authoritative item names from the reagents system (the same
+  // catalog Receive/Log Use search) — merged into the suggestions below so
+  // whoever's counting the fridge sees the correct spelling, not just
+  // whatever's already been typed into this fridge sheet before (which is
+  // exactly how "TROPONIN"/"TRPONINE"/"Hstnl" ended up as three names).
+  const [catalogNames, setCatalogNames] = useState([]);
+  useEffect(() => {
+    (async () => {
+      const { count } = await supabase.from("reagents").select("*", { count: "exact", head: true });
+      const total = count || 0;
+      const pageSize = 1000;
+      const pages = Math.ceil(total / pageSize) || 1;
+      const results = await Promise.all(
+        Array.from({ length: pages }, (_, i) =>
+          supabase.from("reagents").select("name").range(i * pageSize, i * pageSize + pageSize - 1)
+        )
+      );
+      const names = results.flatMap((r) => (r.data || []).map((row) => row.name));
+      setCatalogNames([...new Set(names.filter(Boolean))]);
+    })();
+  }, []);
   async function uploadFridgePhoto(fridgeName, dataUrl) {
     const { data: existing } = await supabase.from("fridge_owners").select("fridge_name").eq("fridge_name", fridgeName).maybeSingle();
     if (existing) {
@@ -106,7 +128,7 @@ export default function FridgeInventory({ username, logActivity }) {
   }
 
   const fridgeNames = useMemo(() => [...new Set([...BASE_FRIDGES, ...(all || []).map((r) => r.refrigerator_name)])].sort(), [all]);
-  const itemSuggestions = useMemo(() => [...new Set((all || []).map((r) => r.item_name))], [all]);
+  const itemSuggestions = useMemo(() => [...new Set([...(all || []).map((r) => r.item_name), ...catalogNames])].filter(Boolean).sort(), [all, catalogNames]);
   const deviceSuggestions = useMemo(() => [...new Set((all || []).map((r) => r.device_group).filter(Boolean))], [all]);
   const itemCountFor = (name) => (all || []).filter((r) => r.refrigerator_name === name && r.month === month && r.item_name).length;
 
