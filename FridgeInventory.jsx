@@ -190,17 +190,31 @@ export default function FridgeInventory({ username, logActivity }) {
     }
     const toInsert = currentRows.filter((r) => isTempId(r.id)).map((r) => {
       const { id, ...rest } = r;
-      return rest;
+      return { ...rest, expiry_date: rest.expiry_date || null };
     });
     const toUpdate = currentRows.filter((r) => !isTempId(r.id));
 
     if (toInsert.length) await supabase.from("fridge_inventory").insert(toInsert);
-    for (const r of toUpdate) {
-      await supabase.from("fridge_inventory").update({
-        item_name: r.item_name, lot_number: r.lot_number, quantity: r.quantity, expiry_date: r.expiry_date, counted_by: r.counted_by,
-        edited_by: r.edited_by || "", edited_at: r.edited_at || null,
-      }).eq("id", r.id);
+
+    // Each row is saved independently — a bad value in one row (e.g. an
+    // empty expiry date sent as "" instead of null, which Postgres
+    // rejects for a date column) must not silently abort every row queued
+    // after it, which is what a plain sequential for-loop with unhandled
+    // errors was doing before.
+    const results = await Promise.allSettled(
+      toUpdate.map((r) =>
+        supabase.from("fridge_inventory").update({
+          item_name: r.item_name, lot_number: r.lot_number, quantity: r.quantity,
+          expiry_date: r.expiry_date || null, counted_by: r.counted_by,
+          edited_by: r.edited_by || "", edited_at: r.edited_at || null,
+        }).eq("id", r.id)
+      )
+    );
+    const failed = results.filter((res) => res.status === "rejected" || res.value?.error);
+    if (failed.length) {
+      alert(`${failed.length} of ${toUpdate.length} row(s) failed to save — please check and try saving again. (Everything else saved fine.)`);
     }
+
     await logActivity?.("fridge_count", "fridge", `${refrigeratorName} — ${month}: ${toInsert.length} new row(s), ${toUpdate.length} updated`);
     await loadAll();
     setSaveMsg("Saved ✓");
@@ -299,7 +313,7 @@ export default function FridgeInventory({ username, logActivity }) {
                 <th style={thStyle}>Unit</th>
                 <th style={thStyle}>Quantity</th>
                 <th style={thStyle}>Expiry date</th>
-                <th className="no-print" style={{ ...thStyle, width: 140 }}>Signed</th>
+                <th style={{ ...thStyle, width: 140 }}>Signed</th>
                 <th className="no-print" style={{ ...thStyle, width: 30 }}></th>
               </tr>
             </thead>
@@ -323,7 +337,7 @@ export default function FridgeInventory({ username, logActivity }) {
                       <td style={tdStyle}>
                         <input type="date" lang="en-US" dir="ltr" style={cellInputStyle} value={r.expiry_date || ""} onChange={(e) => updateRow(r.id, "expiry_date", e.target.value)} />
                       </td>
-                      <td className="no-print" style={{ ...tdStyle, fontSize: 11, color: "#7B8E8A" }}>
+                      <td style={{ ...tdStyle, fontSize: 11, color: "#7B8E8A" }}>
                         {r.edited_by ? (
                           <span title={r.edited_at ? new Date(r.edited_at).toLocaleString() : ""}>edited: {r.edited_by}</span>
                         ) : r.added_by ? (
