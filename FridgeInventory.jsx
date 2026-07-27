@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Plus, Trash2, Download, Refrigerator, Printer, Save, CheckCircle2, ArrowLeft, Pencil } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import FridgeIcon from "./FridgeIcon";
@@ -96,12 +96,24 @@ export default function FridgeInventory({ username, logActivity }) {
   // Opening a fridge for a month that has no count yet: carry forward the
   // most recent prior month's items as a starting point, so staff only
   // update quantities/expiry instead of re-typing the whole sheet.
+  //
+  // This must only ever run ONCE per (fridge, month) — not every time `all`
+  // changes. `all` gets refreshed after every save (loadAll() at the end of
+  // saveAll()), and this effect used to depend on `all` while also calling
+  // setAll() itself, which is exactly the kind of effect that can end up
+  // firing again on a reload and re-injecting stale prior-month rows on
+  // top of what staff just saved. A ref keyed by fridge+month makes the
+  // decision once and never revisits it.
+  const carriedForwardRef = useRef(new Set());
   useEffect(() => {
     if (!refrigeratorName || all === null) return;
+    const key = `${refrigeratorName}__${month}`;
+    if (carriedForwardRef.current.has(key)) return;
     const existing = all.filter((r) => r.month === month && r.refrigerator_name === refrigeratorName);
-    if (existing.length > 0) return;
+    if (existing.length > 0) { carriedForwardRef.current.add(key); return; }
     const priorRows = all.filter((r) => r.refrigerator_name === refrigeratorName && r.month < month);
-    if (priorRows.length === 0) return;
+    if (priorRows.length === 0) return; // nothing to carry forward yet — don't mark as done, in case `all` just hasn't finished loading
+    carriedForwardRef.current.add(key);
     const latestPriorMonth = priorRows.reduce((m, r) => (r.month > m ? r.month : m), priorRows[0].month);
     const carryOver = priorRows
       .filter((r) => r.month === latestPriorMonth)
