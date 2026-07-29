@@ -29,6 +29,22 @@ export default function FridgeInventory({ username, logActivity }) {
   const [refrigeratorName, setRefrigeratorName] = useState("");
   const [countedBy, setCountedBy] = useState("");
   const [dirty, setDirty] = useState(false);
+  const savingRef = useRef(false);
+
+  // Auto-save: once something's been edited, wait for a short pause in
+  // typing (2.5s) and save automatically — so a long count session that
+  // never gets a manual "Save" click still ends up persisted. The manual
+  // Save button still works too, for anyone who wants it to happen right
+  // away instead of waiting. savingRef stops the auto-save timer and a
+  // manual click from ever running at the same time — without it, two
+  // concurrent saveAll() calls can both see the same not-yet-saved rows
+  // and insert each one twice.
+  useEffect(() => {
+    if (!dirty) return;
+    const timer = setTimeout(() => { if (!savingRef.current) saveAll(); }, 2500);
+    return () => clearTimeout(timer);
+  }, [dirty, all]);
+
   const [saveMsg, setSaveMsg] = useState("");
   const [deletedIds, setDeletedIds] = useState([]);
   const [tempLogs, setTempLogs] = useState([]);
@@ -196,6 +212,8 @@ export default function FridgeInventory({ username, logActivity }) {
   }
 
   async function saveAll() {
+    if (savingRef.current) return; // a save is already running — don't start a second one
+    savingRef.current = true;
     setSaveMsg("Saving…");
     if (deletedIds.length) {
       await supabase.from("fridge_inventory").delete().in("id", deletedIds);
@@ -231,6 +249,7 @@ export default function FridgeInventory({ username, logActivity }) {
     await loadAll();
     setSaveMsg("Saved ✓");
     setTimeout(() => setSaveMsg(""), 2500);
+    savingRef.current = false;
   }
 
   async function handleFridgeImport({ month: importMonth, refrigeratorName: importFridge, rows }) {

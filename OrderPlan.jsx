@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { ClipboardList, Plus, Trash2, Save, CheckCircle2 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -29,6 +29,17 @@ export default function OrderPlan({ reagents, devices, logActivity }) {
   const [all, setAll] = useState(null);
   const [month, setMonth] = useState(nextMonthISO());
   const [dirty, setDirty] = useState(false);
+  const savingRef = useRef(false);
+
+  // Same debounced auto-save as the fridge inventory sheet — saves 2.5s
+  // after the last edit, no manual click required. savingRef prevents the
+  // timer and a manual Save click from ever running saveAll() at once.
+  useEffect(() => {
+    if (!dirty) return;
+    const timer = setTimeout(() => { if (!savingRef.current) saveAll(); }, 2500);
+    return () => clearTimeout(timer);
+  }, [dirty, all]);
+
   const [saveMsg, setSaveMsg] = useState("");
   const [deletedIds, setDeletedIds] = useState([]);
 
@@ -77,19 +88,26 @@ export default function OrderPlan({ reagents, devices, logActivity }) {
   }
 
   async function saveAll() {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaveMsg("Saving…");
     if (deletedIds.length) await supabase.from("device_order_plans").delete().in("id", deletedIds);
     const currentRows = (all || []).filter((r) => r.month === month);
     const toInsert = currentRows.filter((r) => isTempId(r.id)).map(({ id, ...rest }) => rest);
     const toUpdate = currentRows.filter((r) => !isTempId(r.id));
     if (toInsert.length) await supabase.from("device_order_plans").insert(toInsert);
-    for (const r of toUpdate) {
-      await supabase.from("device_order_plans").update({ item_name: r.item_name, quantity: r.quantity, notes: r.notes }).eq("id", r.id);
+    const results = await Promise.allSettled(
+      toUpdate.map((r) => supabase.from("device_order_plans").update({ item_name: r.item_name, quantity: r.quantity, notes: r.notes }).eq("id", r.id))
+    );
+    const failed = results.filter((res) => res.status === "rejected" || res.value?.error);
+    if (failed.length) {
+      alert(`${failed.length} of ${toUpdate.length} row(s) failed to save — please check and try saving again. (Everything else saved fine.)`);
     }
     await logActivity?.("settings_change", "config", `Order plan for ${month} updated (${toInsert.length} new, ${toUpdate.length} edited, ${deletedIds.length} removed)`);
     await loadAll();
     setSaveMsg("Saved ✓");
     setTimeout(() => setSaveMsg(""), 2500);
+    savingRef.current = false;
   }
 
   if (all === null) return <div style={{ padding: 40, textAlign: "center", color: "#8A9694" }}>Loading…</div>;

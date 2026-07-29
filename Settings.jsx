@@ -325,6 +325,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   }
 
   async function deleteDevice(id, name) {
+    if (!confirm(`Remove device "${name}"? This only removes the device entry itself — its reagent lots and history stay in Reports.`)) return;
     await supabase.from("devices").delete().eq("id", id);
     await logActivity?.("device_delete", "device", name);
     reload();
@@ -362,6 +363,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   }
 
   async function deletePreset(id, name) {
+    if (!confirm(`Remove preset "${name}"? Existing reagents already using it are not affected.`)) return;
     await supabase.from("reagent_presets").delete().eq("id", id);
     await logActivity?.("preset_delete", "preset", name);
     reload();
