@@ -25,6 +25,7 @@ function isTempId(id) {
 
 export default function FridgeInventory({ username, logActivity }) {
   const [all, setAll] = useState(null);
+  const [itemSuggestions, setItemSuggestions] = useState([]);
   const [month, setMonth] = useState(todayMonth());
   const [refrigeratorName, setRefrigeratorName] = useState("");
   const [countedBy, setCountedBy] = useState("");
@@ -44,9 +45,25 @@ export default function FridgeInventory({ username, logActivity }) {
     const pages = await Promise.all(
       starts.map((from) => supabase.from("fridge_inventory").select("*").order("row_order").range(from, from + pageSize - 1))
     );
-    setAll(pages.flatMap((p) => p.data || []));
+    const freshRows = pages.flatMap((p) => p.data || []);
+    setAll(freshRows);
     setDirty(false);
     setDeletedIds([]);
+
+    // A stable snapshot of names for the suggestions dropdown — captured
+    // once here (and once more below from the reagents catalog), NOT
+    // recomputed from `all` on every keystroke. Recomputing a big list on
+    // every character typed was what made the item-name field lag/jump.
+    const { count: rCount } = await supabase.from("reagents").select("*", { count: "exact", head: true });
+    const rTotal = rCount || 0;
+    const rPageSize = 1000;
+    const rStarts = [];
+    for (let from = 0; from < rTotal; from += rPageSize) rStarts.push(from);
+    const rPages = await Promise.all(
+      rStarts.map((from) => supabase.from("reagents").select("name").range(from, from + rPageSize - 1))
+    );
+    const catalog = rPages.flatMap((p) => (p.data || []).map((row) => row.name));
+    setItemSuggestions([...new Set([...freshRows.map((r) => r.item_name), ...catalog])].filter(Boolean).sort());
   }
   async function loadTemps() {
     const { data } = await supabase.from("fridge_temperature_logs").select("*").order("date", { ascending: false });
@@ -62,28 +79,6 @@ export default function FridgeInventory({ username, logActivity }) {
     setFridgePhotos(photoMap);
   }
   useEffect(() => { loadOwners(); }, []);
-
-  // Canonical, authoritative item names from the reagents system (the same
-  // catalog Receive/Log Use search) — merged into the suggestions below so
-  // whoever's counting the fridge sees the correct spelling, not just
-  // whatever's already been typed into this fridge sheet before (which is
-  // exactly how "TROPONIN"/"TRPONINE"/"Hstnl" ended up as three names).
-  const [catalogNames, setCatalogNames] = useState([]);
-  useEffect(() => {
-    (async () => {
-      const { count } = await supabase.from("reagents").select("*", { count: "exact", head: true });
-      const total = count || 0;
-      const pageSize = 1000;
-      const pages = Math.ceil(total / pageSize) || 1;
-      const results = await Promise.all(
-        Array.from({ length: pages }, (_, i) =>
-          supabase.from("reagents").select("name").range(i * pageSize, i * pageSize + pageSize - 1)
-        )
-      );
-      const names = results.flatMap((r) => (r.data || []).map((row) => row.name));
-      setCatalogNames([...new Set(names.filter(Boolean))]);
-    })();
-  }, []);
   async function uploadFridgePhoto(fridgeName, dataUrl) {
     const { data: existing } = await supabase.from("fridge_owners").select("fridge_name").eq("fridge_name", fridgeName).maybeSingle();
     if (existing) {
@@ -142,7 +137,6 @@ export default function FridgeInventory({ username, logActivity }) {
   }
 
   const fridgeNames = useMemo(() => [...new Set([...BASE_FRIDGES, ...(all || []).map((r) => r.refrigerator_name)])].sort(), [all]);
-  const itemSuggestions = useMemo(() => [...new Set([...(all || []).map((r) => r.item_name), ...catalogNames])].filter(Boolean).sort(), [all, catalogNames]);
   const deviceSuggestions = useMemo(() => [...new Set((all || []).map((r) => r.device_group).filter(Boolean))], [all]);
   const itemCountFor = (name) => (all || []).filter((r) => r.refrigerator_name === name && r.month === month && r.item_name).length;
 
@@ -353,16 +347,16 @@ export default function FridgeInventory({ username, logActivity }) {
                   {rows.map((r) => (
                     <tr key={r.id}>
                       <td style={tdStyle}>
-                        <input list="item-suggestions" style={cellInputStyle} value={r.item_name} onChange={(e) => updateRow(r.id, "item_name", e.target.value)} />
+                        <ItemNameAutocomplete style={cellInputStyle} value={r.item_name} options={itemSuggestions} onChange={(v) => updateRow(r.id, "item_name", v)} />
                       </td>
                       <td style={tdStyle}>
                         <input style={cellInputStyle} value={r.lot_number} onChange={(e) => updateRow(r.id, "lot_number", e.target.value)} />
                       </td>
                       <td style={tdStyle}>
-                        <input type="number" min="0" style={{ ...cellInputStyle, textAlign: "center", ...(!r.boxes && r.boxes !== 0 ? { borderColor: "#C1432B" } : {}) }} value={r.boxes ?? ""} onChange={(e) => updateRow(r.id, "boxes", e.target.value === "" ? null : Number(e.target.value))} placeholder="0" />
+                        <input type="number" min="0" step="any" style={{ ...cellInputStyle, textAlign: "center", ...(!r.boxes && r.boxes !== 0 ? { borderColor: "#C1432B" } : {}) }} value={r.boxes ?? ""} onChange={(e) => updateRow(r.id, "boxes", e.target.value === "" ? null : Number(e.target.value))} placeholder="0" />
                       </td>
                       <td style={tdStyle}>
-                        <input type="number" min="0" style={{ ...cellInputStyle, textAlign: "center" }} value={r.kits_per_box ?? ""} onChange={(e) => updateRow(r.id, "kits_per_box", e.target.value === "" ? null : Number(e.target.value))} placeholder="e.g. 4" />
+                        <input type="number" min="0" step="any" style={{ ...cellInputStyle, textAlign: "center" }} value={r.kits_per_box ?? ""} onChange={(e) => updateRow(r.id, "kits_per_box", e.target.value === "" ? null : Number(e.target.value))} placeholder="e.g. 4" />
                       </td>
                       <td style={tdStyle}>
                         <input type="date" lang="en-US" dir="ltr" style={cellInputStyle} value={r.expiry_date || ""} onChange={(e) => updateRow(r.id, "expiry_date", e.target.value)} />
@@ -389,7 +383,6 @@ export default function FridgeInventory({ username, logActivity }) {
             </tbody>
           </table>
 
-          <datalist id="item-suggestions">{itemSuggestions.map((n) => <option key={n} value={n} />)}</datalist>
 
           <div className="no-print" style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center" }}>
             <button onClick={addSection} style={{ background: "none", border: "1px dashed var(--accent-1)", color: "var(--accent-1)", borderRadius: 7, padding: "8px 14px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
@@ -502,6 +495,51 @@ function FridgePicker({ fridgeNames, all, month, owners, fridgePhotos, onUploadP
 
 // A CSS-drawn fridge: a body with a translucent "glass" window showing small
 // chips for whatever's currently logged inside, and the name on top.
+// A small, self-contained autocomplete field. Deliberately NOT a native
+// <datalist> — on some mobile browsers, a datalist's popup opening/closing
+// on every keystroke can shift the page/viewport, which is exactly the
+// "jumps up, jumps down" issue this replaces. This renders its own
+// absolutely-positioned suggestion list instead, so nothing outside the
+// cell itself ever reflows while typing.
+function ItemNameAutocomplete({ value, options, onChange, style }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const q = (value || "").trim().toLowerCase();
+  const matches = q ? options.filter((o) => o.toLowerCase().includes(q)).slice(0, 8) : [];
+
+  useEffect(() => {
+    function onOutside(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, []);
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <input
+        style={style}
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+      />
+      {open && matches.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 20, background: "#fff", border: "1px solid #C7D1CE", borderRadius: 6, boxShadow: "0 4px 10px rgba(0,0,0,0.12)", minWidth: 160, maxHeight: 180, overflowY: "auto" }}>
+          {matches.map((m) => (
+            <div
+              key={m}
+              onMouseDown={(e) => { e.preventDefault(); onChange(m); setOpen(false); }}
+              style={{ padding: "6px 10px", fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#F0F3F2")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+            >
+              {m}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FridgeCard({ name, owner, imageUrl, onUploadPhoto, items, onClick, onRename }) {
   function handleRename(e) {
     e.stopPropagation();
