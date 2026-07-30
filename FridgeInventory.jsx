@@ -31,20 +31,6 @@ export default function FridgeInventory({ username, logActivity }) {
   const [dirty, setDirty] = useState(false);
   const savingRef = useRef(false);
 
-  // Auto-save: once something's been edited, wait for a short pause in
-  // typing (2.5s) and save automatically — so a long count session that
-  // never gets a manual "Save" click still ends up persisted. The manual
-  // Save button still works too, for anyone who wants it to happen right
-  // away instead of waiting. savingRef stops the auto-save timer and a
-  // manual click from ever running at the same time — without it, two
-  // concurrent saveAll() calls can both see the same not-yet-saved rows
-  // and insert each one twice.
-  useEffect(() => {
-    if (!dirty) return;
-    const timer = setTimeout(() => { if (!savingRef.current) saveAll(); }, 2500);
-    return () => clearTimeout(timer);
-  }, [dirty, all]);
-
   const [saveMsg, setSaveMsg] = useState("");
   const [deletedIds, setDeletedIds] = useState([]);
   const [tempLogs, setTempLogs] = useState([]);
@@ -183,7 +169,7 @@ export default function FridgeInventory({ username, logActivity }) {
       id: `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       month, refrigerator_name: refrigeratorName, counted_by: countedBy,
       added_by: username || "", edited_by: "", edited_at: null,
-      device_group: deviceGroup, item_name: "", lot_number: "", quantity: "", expiry_date: null, row_order: maxOrder + 1,
+      device_group: deviceGroup, item_name: "", lot_number: "", quantity: "", boxes: null, kits_per_box: null, expiry_date: null, row_order: maxOrder + 1,
     };
     setAll((a) => [...a, tempRow]);
     setDirty(true);
@@ -213,16 +199,25 @@ export default function FridgeInventory({ username, logActivity }) {
 
   async function saveAll() {
     if (savingRef.current) return; // a save is already running — don't start a second one
+
+    // Boxes is left blank sometimes and that's fine to save — the empty
+    // field already shows red so staff can see it's missing, but it
+    // shouldn't stop them from saving everything else.
+
     savingRef.current = true;
     setSaveMsg("Saving…");
     if (deletedIds.length) {
       await supabase.from("fridge_inventory").delete().in("id", deletedIds);
     }
+    const withQuantity = (r) => ({
+      ...r,
+      quantity: r.kits_per_box ? `${r.boxes} box x ${r.kits_per_box}` : String(r.boxes ?? ""),
+    });
     const toInsert = currentRows.filter((r) => isTempId(r.id)).map((r) => {
-      const { id, ...rest } = r;
+      const { id, ...rest } = withQuantity(r);
       return { ...rest, expiry_date: rest.expiry_date || null };
     });
-    const toUpdate = currentRows.filter((r) => !isTempId(r.id));
+    const toUpdate = currentRows.filter((r) => !isTempId(r.id)).map(withQuantity);
 
     if (toInsert.length) await supabase.from("fridge_inventory").insert(toInsert);
 
@@ -235,6 +230,7 @@ export default function FridgeInventory({ username, logActivity }) {
       toUpdate.map((r) =>
         supabase.from("fridge_inventory").update({
           item_name: r.item_name, lot_number: r.lot_number, quantity: r.quantity,
+          boxes: r.boxes, kits_per_box: r.kits_per_box,
           expiry_date: r.expiry_date || null, counted_by: r.counted_by,
           edited_by: r.edited_by || "", edited_at: r.edited_at || null,
         }).eq("id", r.id)
@@ -291,7 +287,6 @@ export default function FridgeInventory({ username, logActivity }) {
           {saveMsg && <span style={{ fontSize: 12.5, color: "#2F6B4F", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><CheckCircle2 size={13} /> {saveMsg}</span>}
           <button onClick={() => window.print()} style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Printer size={14} /> Print</button>
           <button onClick={exportExcel} style={{ background: "var(--accent-2)", color: "#fff", border: "none", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Download size={14} /> Export Excel</button>
-          <button onClick={saveAll} disabled={!dirty} style={{ background: dirty ? "var(--accent-1)" : "#C7D1CE", color: "#fff", border: "none", borderRadius: 7, padding: "8px 14px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, cursor: dirty ? "pointer" : "default" }}><Save size={14} /> Save</button>
         </div>
       </div>
       <div className="no-print" style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 20 }}>Monthly stock count sheet — matches your paper form. Not shown in Reports. Edits are local until you press <b>Save</b>.</div>
@@ -342,7 +337,8 @@ export default function FridgeInventory({ username, logActivity }) {
               <tr>
                 <th style={thStyle}>Item</th>
                 <th style={thStyle}>Unit</th>
-                <th style={thStyle}>Quantity</th>
+                <th style={{ ...thStyle, width: 70 }}>Box</th>
+                <th style={{ ...thStyle, width: 90 }}>Quantity</th>
                 <th style={thStyle}>Expiry date</th>
                 <th style={{ ...thStyle, width: 140 }}>Signed</th>
                 <th className="no-print" style={{ ...thStyle, width: 30 }}></th>
@@ -352,7 +348,7 @@ export default function FridgeInventory({ username, logActivity }) {
               {Object.entries(groups).map(([section, rows]) => (
                 <React.Fragment key={section}>
                   <tr>
-                    <td colSpan={6} style={{ textAlign: "center", fontWeight: 700, background: "#F7F9F8", border: "1px solid #C7D1CE", padding: "6px 0" }}>#{section}</td>
+                    <td colSpan={7} style={{ textAlign: "center", fontWeight: 700, background: "#F7F9F8", border: "1px solid #C7D1CE", padding: "6px 0" }}>#{section}</td>
                   </tr>
                   {rows.map((r) => (
                     <tr key={r.id}>
@@ -363,7 +359,10 @@ export default function FridgeInventory({ username, logActivity }) {
                         <input style={cellInputStyle} value={r.lot_number} onChange={(e) => updateRow(r.id, "lot_number", e.target.value)} />
                       </td>
                       <td style={tdStyle}>
-                        <input style={{ ...cellInputStyle, textAlign: "center" }} value={r.quantity} onChange={(e) => updateRow(r.id, "quantity", e.target.value)} placeholder="e.g. 1½" />
+                        <input type="number" min="0" style={{ ...cellInputStyle, textAlign: "center", ...(!r.boxes && r.boxes !== 0 ? { borderColor: "#C1432B" } : {}) }} value={r.boxes ?? ""} onChange={(e) => updateRow(r.id, "boxes", e.target.value === "" ? null : Number(e.target.value))} placeholder="0" />
+                      </td>
+                      <td style={tdStyle}>
+                        <input type="number" min="0" style={{ ...cellInputStyle, textAlign: "center" }} value={r.kits_per_box ?? ""} onChange={(e) => updateRow(r.id, "kits_per_box", e.target.value === "" ? null : Number(e.target.value))} placeholder="e.g. 4" />
                       </td>
                       <td style={tdStyle}>
                         <input type="date" lang="en-US" dir="ltr" style={cellInputStyle} value={r.expiry_date || ""} onChange={(e) => updateRow(r.id, "expiry_date", e.target.value)} />
