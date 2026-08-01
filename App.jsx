@@ -362,6 +362,23 @@ export default function App() {
     loadAll();
   }
 
+  // "I threw it away / it's finished" — for any staff, not just admins.
+  // Marks the lot done (archived, shows as FINISHED in Reports) with who
+  // disposed of it and when, instead of it sitting there as an unexplained
+  // 0-quantity active lot.
+  async function disposeReagent(id) {
+    const item = reagents.find((r) => r.id === id);
+    if (!item) return;
+    if (!confirm(`Mark ${item.name} (Lot ${item.lot_number}) as disposed / thrown away?`)) return;
+    const today = todayISO();
+    await supabase.from("reagents").update({
+      deleted: true, deleted_by: username, deleted_at: new Date().toISOString(),
+      disposed_by: username, disposed_date: today,
+    }).eq("id", id);
+    await logActivity("dispose", "reagent", `${item.name} — Lot ${item.lot_number} disposed by ${username}`);
+    loadAll();
+  }
+
   async function saveEditedLog(updated, original) {
     const item = reagents.find((r) => r.id === original.reagent_id);
     const { error } = await supabase.rpc("edit_consumption_log", {
@@ -592,7 +609,7 @@ export default function App() {
             role={role}
             expiryWarningDays={config?.expiry_warning_days}
             onBack={() => setTab("stock")}
-            onEditReagent={setEditReagent} onDeleteReagent={deleteReagent}
+            onEditReagent={setEditReagent} onDeleteReagent={deleteReagent} onDisposeReagent={disposeReagent}
             onEditLog={setEditLog} onDeleteLog={deleteLog}
           />
         )}
@@ -857,7 +874,7 @@ function Dashboard({ groups, allNames, counts, departments, role, onDeleteReagen
   );
 }
 
-function DetailView({ group, logs, role, expiryWarningDays, onBack, onEditReagent, onDeleteReagent, onEditLog, onDeleteLog }) {
+function DetailView({ group, logs, role, expiryWarningDays, onBack, onEditReagent, onDeleteReagent, onDisposeReagent, onEditLog, onDeleteLog }) {
   const last30 = logs.filter((l) => daysBetween(todayISO(), l.date) <= 30);
   const consumed30 = last30.reduce((s, l) => s + l.amount, 0);
   const avgDaily = consumed30 / 30;
@@ -906,6 +923,9 @@ function DetailView({ group, logs, role, expiryWarningDays, onBack, onEditReagen
                 <div style={{ fontSize: 13 }}>{it.current_quantity}/{it.quantity_received} {it.unit}</div>
                 <div style={{ fontSize: 12.5, color: m.color, fontWeight: 600 }}>{dExp < 0 ? `expired ${Math.abs(dExp)}d ago` : `${dExp}d left`}</div>
                 <button onClick={() => onEditReagent(it)} style={{ background: "none", border: "none", color: "#8A9694" }}><Pencil size={14} /></button>
+                {it.current_quantity <= 0 && (
+                  <button onClick={() => onDisposeReagent(it.id)} title="Mark as disposed / thrown away" style={{ background: "none", border: "1px solid #C7D1CE", color: "#8A6D3B", borderRadius: 6, padding: "3px 8px", fontSize: 11, fontWeight: 700 }}>Dispose</button>
+                )}
                 {(["admin","super","owner"].includes(role)) && <button onClick={() => onDeleteReagent(it.id)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={14} /></button>}
               </div>
               {failedItems.length > 0 && (
