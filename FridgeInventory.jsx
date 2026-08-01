@@ -119,7 +119,8 @@ export default function FridgeInventory({ username, logActivity }) {
         month, refrigerator_name: refrigeratorName, counted_by: countedBy,
         added_by: username || "", edited_by: "", edited_at: null,
         device_group: r.device_group, item_name: r.item_name, lot_number: r.lot_number,
-        quantity: r.quantity, expiry_date: r.expiry_date, row_order: r.row_order,
+        quantity: r.quantity, boxes: r.boxes ?? null, kits_per_box: r.kits_per_box ?? null,
+        expiry_date: r.expiry_date, row_order: r.row_order,
       }));
     setAll((a) => [...a, ...carryOver]);
     setDirty(true);
@@ -356,7 +357,7 @@ export default function FridgeInventory({ username, logActivity }) {
                         <input type="number" min="0" step="any" style={{ ...cellInputStyle, textAlign: "center", ...(!r.boxes && r.boxes !== 0 ? { borderColor: "#C1432B" } : {}) }} value={r.boxes ?? ""} onChange={(e) => updateRow(r.id, "boxes", e.target.value === "" ? null : Number(e.target.value))} placeholder="0" />
                       </td>
                       <td style={tdStyle}>
-                        <input type="number" min="0" step="any" style={{ ...cellInputStyle, textAlign: "center" }} value={r.kits_per_box ?? ""} onChange={(e) => updateRow(r.id, "kits_per_box", e.target.value === "" ? null : Number(e.target.value))} placeholder="e.g. 4" />
+                        <input type="number" min="0" step="any" style={{ ...cellInputStyle, textAlign: "center" }} value={r.kits_per_box ?? ""} onChange={(e) => updateRow(r.id, "kits_per_box", e.target.value === "" ? null : Number(e.target.value))} />
                       </td>
                       <td style={tdStyle}>
                         <input type="date" lang="en-US" dir="ltr" style={cellInputStyle} value={r.expiry_date || ""} onChange={(e) => updateRow(r.id, "expiry_date", e.target.value)} />
