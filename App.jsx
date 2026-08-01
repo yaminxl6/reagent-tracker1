@@ -836,31 +836,39 @@ function Dashboard({ groups, allNames, counts, departments, role, onDeleteReagen
               const pct = (g.fefo.current_quantity / g.fefo.quantity_received) * 100;
               const dExp = daysBetween(g.fefo.expiry_date, todayISO());
               return (
-                <div key={g.name} onClick={() => onSelect(g)} style={{ display: "flex", alignItems: "center", gap: 16, background: "#fff", border: "1px solid #E1E8E5", borderLeft: `4px solid ${m.color}`, borderRadius: 8, padding: "12px 16px", textAlign: "left", cursor: "pointer" }}>
-                  <GaugeBar pct={pct} color={m.color} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 15, display: "flex", alignItems: "center", gap: 6 }}>
-                      {g.name}
-                      {g.flagged && <ClipboardX size={13} color="#B8860B" title="Inspection issue on receipt" />}
+                <div key={g.name} onClick={() => onSelect(g)} style={{ background: "#fff", border: "1px solid #E1E8E5", borderLeft: `4px solid ${m.color}`, borderRadius: 8, padding: "12px 14px", cursor: "pointer" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                    <div style={{ fontWeight: 600, fontSize: 15, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.name}</span>
+                      {g.flagged && <ClipboardX size={13} color="#B8860B" title="Inspection issue on receipt" style={{ flexShrink: 0 }} />}
                     </div>
-                    <div style={{ fontSize: 12.5, color: "#7B8E8A", fontFamily: "'IBM Plex Mono', monospace", marginTop: 2 }}>
-                      Lot {g.fefo.lot_number} · {g.fefo.current_quantity} {g.unit} left · {g.items.length > 1 ? `${g.items.length} lots` : "1 lot"}{g.fefo.device ? ` · ${g.fefo.device}` : ""}{g.fefo.fridge_name ? ` · ${g.fefo.fridge_name}` : ""}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: m.color, padding: "2px 8px", borderRadius: 10 }}>{m.label}</span>
+                      {(["admin","super","owner"].includes(role)) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDeleteReagent(g.fefo.id); }}
+                          title="Remove this lot"
+                          style={{ background: "none", border: "none", color: "#C1432B", padding: 2 }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                      <ChevronRight size={16} color="#B7C3C0" />
                     </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: m.color }}>{m.label}</div>
-                    <div style={{ fontSize: 11.5, color: "#8A9694" }}>{dExp < 0 ? `expired ${Math.abs(dExp)}d ago` : `expires in ${dExp}d`}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                    <GaugeBar pct={pct} color={m.color} />
+                    <div style={{ fontSize: 12.5, color: "#516361", whiteSpace: "nowrap" }}>{g.fefo.current_quantity} {g.unit} left</div>
                   </div>
-                  {(["admin","super","owner"].includes(role)) && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDeleteReagent(g.fefo.id); }}
-                      title="Remove this lot"
-                      style={{ background: "none", border: "none", color: "#C1432B", padding: 4 }}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  )}
-                  <ChevronRight size={16} color="#B7C3C0" />
+                  <div style={{ fontSize: 11.5, color: "#8A9694", fontFamily: "'IBM Plex Mono', monospace", display: "flex", flexWrap: "wrap", gap: "2px 8px" }}>
+                    <span>Lot {g.fefo.lot_number}</span>
+                    <span>·</span>
+                    <span>{g.items.length > 1 ? `${g.items.length} lots` : "1 lot"}</span>
+                    {g.fefo.device && <><span>·</span><span>{g.fefo.device}</span></>}
+                    {g.fefo.fridge_name && <><span>·</span><span>{g.fefo.fridge_name}</span></>}
+                    <span>·</span>
+                    <span>{dExp < 0 ? `expired ${Math.abs(dExp)}d ago` : `expires in ${dExp}d`}</span>
+                  </div>
                 </div>
               );
             })}
