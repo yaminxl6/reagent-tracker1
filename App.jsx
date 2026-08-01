@@ -6,6 +6,7 @@ import Settings from "./Settings";
 import BarcodeScanner from "./BarcodeScanner";
 import ReceiveWizard, { YesNoRow } from "./ReceiveWizard";
 import Charts from "./Charts";
+import LabMap from "./LabMap";
 import ReagentImport from "./ReagentImport";
 import FridgeInventory from "./FridgeInventory";
 import SearchableSelect from "./SearchableSelect";
@@ -615,6 +616,7 @@ export default function App() {
         {tab === "settings" && (["admin","super","owner"].includes(role)) && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} fridgeNames={fridgeNames} reagents={reagents} logs={logs} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
         {tab === "fridges" && <FridgeInventory username={username} logActivity={logActivity} />}
         {tab === "charts" && (["admin","super","owner"].includes(role)) && <Charts reagents={reagents} logs={logs} />}
+        {tab === "labmap" && <LabMap />}
         {tab === "deletions" && ["super","owner"].includes(role) && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}
       </main>
         </div>
@@ -715,6 +717,7 @@ function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, o
         <SideGroupLabel>Tracking</SideGroupLabel>
         <SideBtn active={tab === "reports"} onClick={() => setTab("reports")} icon={<FileText size={16} />} label="Reports" />
         {isAdmin && <SideBtn active={tab === "charts"} onClick={() => setTab("charts")} icon={<BarChart3 size={16} />} label="Charts" />}
+        <SideBtn active={tab === "labmap"} onClick={() => setTab("labmap")} icon={<LayoutGrid size={16} />} label="Lab map" />
         {isSuper && <SideBtn active={tab === "deletions"} onClick={() => setTab("deletions")} icon={<History size={16} />} label="Activity" />}
 
         {isAdmin && (
