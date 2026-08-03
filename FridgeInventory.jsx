@@ -23,11 +23,12 @@ function isTempId(id) {
   return String(id).startsWith("temp-");
 }
 
-export default function FridgeInventory({ username, logActivity }) {
+export default function FridgeInventory({ username, logActivity, initialFridge }) {
   const [all, setAll] = useState(null);
   const [itemSuggestions, setItemSuggestions] = useState([]);
   const [month, setMonth] = useState(todayMonth());
-  const [refrigeratorName, setRefrigeratorName] = useState("");
+  const [refrigeratorName, setRefrigeratorName] = useState(initialFridge || "");
+  useEffect(() => { if (initialFridge) setRefrigeratorName(initialFridge); }, [initialFridge]);
   const [countedBy, setCountedBy] = useState("");
   const [dirty, setDirty] = useState(false);
   const savingRef = useRef(false);

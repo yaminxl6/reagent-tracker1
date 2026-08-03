@@ -8,9 +8,10 @@ const LISTS = [
   { key: "returned", label: "Returned to central bank" },
 ];
 
-export default function BloodBankDisposal({ username }) {
+export default function BloodBankDisposal({ username, initialListType }) {
   const [all, setAll] = useState(null);
-  const [listType, setListType] = useState("damaged");
+  const [listType, setListType] = useState(initialListType || "damaged");
+  useEffect(() => { if (initialListType) setListType(initialListType); }, [initialListType]);
   const [dirty, setDirty] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [deletedIds, setDeletedIds] = useState([]);

@@ -7,6 +7,7 @@ import BarcodeScanner from "./BarcodeScanner";
 import ReceiveWizard, { YesNoRow } from "./ReceiveWizard";
 import Charts from "./Charts";
 import LabMap from "./LabMap";
+import BloodBankDisposal from "./BloodBankDisposal";
 import ReagentImport from "./ReagentImport";
 import FridgeInventory from "./FridgeInventory";
 import SearchableSelect from "./SearchableSelect";
@@ -67,6 +68,9 @@ export default function App() {
   const [fridgeNames, setFridgeNames] = useState([]);
   const [activityLog, setActivityLog] = useState([]);
   const [tab, setTab] = useState("home");
+  const [jumpFridge, setJumpFridge] = useState(null);
+  const [jumpListType, setJumpListType] = useState(null);
+  const [bbMenuOpen, setBbMenuOpen] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -614,9 +618,10 @@ export default function App() {
         )}
         {tab === "reports" && <Reports reagents={reagents} logs={logs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
         {tab === "settings" && (["admin","super","owner"].includes(role)) && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} fridgeNames={fridgeNames} reagents={reagents} logs={logs} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
-        {tab === "fridges" && <FridgeInventory username={username} logActivity={logActivity} />}
+        {tab === "fridges" && <FridgeInventory username={username} logActivity={logActivity} initialFridge={jumpFridge} />}
         {tab === "charts" && (["admin","super","owner"].includes(role)) && <Charts reagents={reagents} logs={logs} />}
         {tab === "labmap" && <LabMap />}
+        {tab === "bloodbank" && <BloodBankDisposal username={username} initialListType={jumpListType} />}
         {tab === "deletions" && ["super","owner"].includes(role) && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}
       </main>
         </div>
@@ -718,6 +723,26 @@ function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, o
         <SideBtn active={tab === "reports"} onClick={() => setTab("reports")} icon={<FileText size={16} />} label="Reports" />
         {isAdmin && <SideBtn active={tab === "charts"} onClick={() => setTab("charts")} icon={<BarChart3 size={16} />} label="Charts" />}
         <SideBtn active={tab === "labmap"} onClick={() => setTab("labmap")} icon={<LayoutGrid size={16} />} label="Lab map" />
+        <div className="no-print">
+          <button
+            onClick={() => setBbMenuOpen((o) => !o)}
+            style={{ width: "100%", background: "transparent", color: "#5C6570", border: "none", borderRadius: 8, padding: "9px 12px", fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 10, textAlign: "left", cursor: "pointer" }}
+          >
+            <Droplet size={16} /> Blood Bank <span style={{ marginLeft: "auto", fontSize: 11 }}>{bbMenuOpen ? "▾" : "▸"}</span>
+          </button>
+          {bbMenuOpen && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 26, marginBottom: 4 }}>
+              <div style={{ fontSize: 10.5, color: "#8A9694", textTransform: "uppercase", marginTop: 4, marginBottom: 2 }}>Fridges</div>
+              {[["Lab0005", "Maged"], ["FFP", "Fawaz (FFP)"], ["PRBCs", "Fawaz (PRBCs)"]].map(([code, name]) => (
+                <button key={code} onClick={() => { setJumpFridge(code); setTab("fridges"); }} style={{ background: "transparent", border: "none", color: "#5C6570", fontSize: 13, padding: "6px 8px", textAlign: "left", borderRadius: 6 }}>{name}</button>
+              ))}
+              <div style={{ fontSize: 10.5, color: "#8A9694", textTransform: "uppercase", marginTop: 8, marginBottom: 2 }}>Disposal lists</div>
+              {[["damaged", "Damaged blood"], ["expired", "Expired blood"], ["returned", "Returned to central bank"]].map(([code, name]) => (
+                <button key={code} onClick={() => { setJumpListType(code); setTab("bloodbank"); }} style={{ background: "transparent", border: "none", color: "#5C6570", fontSize: 13, padding: "6px 8px", textAlign: "left", borderRadius: 6 }}>{name}</button>
+              ))}
+            </div>
+          )}
+        </div>
         {isSuper && <SideBtn active={tab === "deletions"} onClick={() => setTab("deletions")} icon={<History size={16} />} label="Activity" />}
 
         {isAdmin && (
