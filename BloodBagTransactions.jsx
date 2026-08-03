@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, X, Search, Lock } from "lucide-react";
+import { Plus, X, Search, Lock, Trash2 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import SearchableSelect from "./SearchableSelect";
 
@@ -63,6 +63,13 @@ export default function BloodBagTransactions({ username, role }) {
     }
     setShowForm(false);
     setEditing(null);
+    loadAll();
+  }
+
+  async function deleteRecord(row) {
+    if (!isAdmin) return;
+    if (!confirm(`Permanently delete this transaction for bag ${row.bag_number}? This cannot be undone.`)) return;
+    await supabase.from("blood_bag_transactions").delete().eq("id", row.id);
     loadAll();
   }
 
@@ -143,7 +150,12 @@ export default function BloodBagTransactions({ username, role }) {
                     <td style={{ ...tdStyle, color: "#667085", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis" }}>{r.note || "—"}</td>
                     <td style={tdStyle}>
                       {isAdmin ? (
-                        <button onClick={() => setEditing(r)} style={{ background: "none", border: "1px solid #E5E7EB", color: "#667085", borderRadius: 7, padding: "4px 9px", fontSize: 11.5, fontWeight: 600 }}>Edit</button>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button onClick={() => setEditing(r)} style={{ background: "none", border: "1px solid #E5E7EB", color: "#667085", borderRadius: 7, padding: "4px 9px", fontSize: 11.5, fontWeight: 600 }}>Edit</button>
+                          <button onClick={() => deleteRecord(r)} title="Delete permanently" style={{ background: "none", border: "1px solid #FDA29B", color: "#B42318", borderRadius: 7, padding: "4px 7px", fontSize: 11.5, fontWeight: 600, display: "flex", alignItems: "center" }}>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       ) : (
                         <Lock size={13} color="#C7CBD1" title="Locked — admin only" />
                       )}

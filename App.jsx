@@ -15,6 +15,7 @@ import DeviceUsage from "./DeviceUsage";
 import Suppliers from "./Suppliers";
 import Users from "./Users";
 import OrderPlan from "./OrderPlan";
+import StorageAssignment from "./StorageAssignment";
 
 const DEPT_PALETTE = ["#0F7173", "#B5473A", "#8A5A2B", "#5A6ACF", "#2F8F5B", "#B8860B", "#7A4FA3", "#C1432B"];
 // Your lab's fridges, always offered on Receive even before any data exists
@@ -22,6 +23,9 @@ const DEPT_PALETTE = ["#0F7173", "#B5473A", "#8A5A2B", "#5A6ACF", "#2F8F5B", "#B
 // need refrigeration (kept in the regular storeroom instead).
 const BASE_FRIDGES = ["Lab0202", "Lab0007", "Lab0005", "Lab00014"];
 const ROOM_TEMP = "Room Temperature (Warehouse)";
+// Fixed list offered on the Storage Assignment page, per the new receiving
+// workflow. Separate from BASE_FRIDGES/fridgeNames used elsewhere in the app.
+const STORAGE_LOCATIONS = ["Refrigerator 1", "Refrigerator 2", "Refrigerator 3", "Room Temperature", "Freezer (-20°C)", "Deep Freezer (-80°C)"];
 function deptColor(dept, list) {
   const i = Math.max(0, list.indexOf(dept));
   return DEPT_PALETTE[i % DEPT_PALETTE.length];
@@ -197,15 +201,20 @@ export default function App() {
     };
   }, [role]);
 
+  // Receiving no longer places the reagent into any fridge/storage location
+  // automatically. It only lands in the Laboratory Inventory with status
+  // "Pending Storage" until an authorized user assigns it a location on the
+  // Storage Assignment page (see assignStorage below).
   async function addReagent(entry) {
     const dup = reagents.find((r) => !r.deleted && r.name === entry.name && r.lot_number === entry.lotNumber);
     if (dup && !confirm(`Lot ${entry.lotNumber} already exists for ${entry.name}. Add it again anyway?`)) return;
-    await supabase.from("reagents").insert({
+    const { data: inserted, error: insertErr } = await supabase.from("reagents").insert({
       name: entry.name,
       department: entry.department,
       item_type: entry.itemType,
       device: entry.device || "",
-      fridge_name: entry.fridgeName || "",
+      fridge_name: "",
+      storage_status: "Pending Storage",
       lot_number: entry.lotNumber,
       unit: entry.unit,
       quantity_received: entry.quantityReceived,
@@ -221,39 +230,63 @@ export default function App() {
       storage_condition_ok: entry.storage_condition_ok,
       receiving_notes: entry.receivingNotes,
       inspection_notes: entry.inspectionNotes,
+    }).select().single();
+    if (insertErr || !inserted) { setError("Could not save the received reagent."); return; }
+    // Permanent receiving record — kept forever regardless of where the
+    // reagent later gets stored, moved, used, or discarded.
+    await supabase.from("receiving_records").insert({
+      reagent_id: inserted.id,
+      name: entry.name, department: entry.department, device: entry.device || "",
+      lot_number: entry.lotNumber, unit: entry.unit, quantity_received: entry.quantityReceived,
+      expiry_date: entry.expiryDate, received_date: entry.receivedDate, received_by: entry.receivedBy,
+      storage_condition: entry.fridgeName || "",
     });
-    await logActivity("receive", "reagent", `${entry.name} — Lot ${entry.lotNumber}, ${entry.quantityReceived} ${entry.unit}, received by ${entry.receivedBy}`);
-    if (entry.fridgeName && entry.fridgeName !== ROOM_TEMP) {
-      const month = (entry.receivedDate || todayISO()).slice(0, 7);
-      const { data: existingRows } = await supabase.from("fridge_inventory").select("row_order").eq("month", month).eq("refrigerator_name", entry.fridgeName);
-      const maxOrder = (existingRows || []).reduce((m, r) => Math.max(m, r.row_order || 0), 0);
-      await supabase.from("fridge_inventory").insert({
-        month, refrigerator_name: entry.fridgeName, counted_by: entry.receivedBy || "",
-        added_by: entry.receivedBy || "", device_group: entry.device || "",
-        item_name: entry.name, lot_number: entry.lotNumber, quantity: String(entry.quantityReceived),
-        expiry_date: entry.expiryDate, row_order: maxOrder + 1,
-      });
-    }
+    await logActivity("receive", "reagent", `${entry.name} — Lot ${entry.lotNumber}, ${entry.quantityReceived} ${entry.unit}, received by ${entry.receivedBy} — Pending Storage`);
     setShowWizard(false);
     loadAll();
   }
 
+  // Storage Assignment: authorized users only. Moves one or more
+  // Pending-Storage reagents into a chosen location and flips their status
+  // to "Stored". Existing already-stored reagents are never touched by this.
+  async function assignStorage(reagentIds, location) {
+    if (!["admin", "super", "owner"].includes(role)) return;
+    const targets = reagents.filter((r) => reagentIds.includes(r.id));
+    for (const r of targets) {
+      await supabase.from("reagents").update({
+        fridge_name: location,
+        storage_status: "Stored",
+        assigned_by: username,
+        assigned_at: new Date().toISOString(),
+      }).eq("id", r.id);
+      await logActivity("assign_storage", "reagent", `${r.name} — Lot ${r.lot_number} assigned to ${location} by ${username}`);
+      if (location && location !== ROOM_TEMP) {
+        const month = todayISO().slice(0, 7);
+        const { data: existingRows } = await supabase.from("fridge_inventory").select("row_order").eq("month", month).eq("refrigerator_name", location);
+        const maxOrder = (existingRows || []).reduce((m, x) => Math.max(m, x.row_order || 0), 0);
+        await supabase.from("fridge_inventory").insert({
+          month, refrigerator_name: location, counted_by: username || "",
+          added_by: username || "", device_group: r.device || "",
+          item_name: r.name, lot_number: r.lot_number, quantity: String(r.current_quantity),
+          expiry_date: r.expiry_date, row_order: maxOrder + 1,
+        });
+      }
+    }
+    loadAll();
+  }
+
+  // Bulk import follows the same rule as the single Receive wizard now:
+  // no fridge/storage is auto-assigned. Every imported row lands in
+  // Pending Storage and gets its own receiving_records entry.
   async function bulkReceive(rows) {
-    // Same auto-routing rule as the Receive wizard: if the imported row
-    // doesn't already specify a fridge, fall back to the item preset's or
-    // the device's default fridge.
-    const byPresetFridge = {};
-    (presets || []).forEach((p) => { if (p.default_fridge_name) byPresetFridge[p.name] = p.default_fridge_name; });
-    const byDeviceFridge = {};
-    (devices || []).forEach((d) => { if (d.default_fridge_name) byDeviceFridge[d.name] = d.default_fridge_name; });
     const results = await Promise.allSettled(rows.map(async (entry) => {
-      const fridgeName = entry.fridgeName || byPresetFridge[entry.name] || byDeviceFridge[entry.device] || "";
-      const { error: insertErr } = await supabase.from("reagents").insert({
+      const { data: inserted, error: insertErr } = await supabase.from("reagents").insert({
         name: entry.name,
         department: entry.department,
         item_type: entry.itemType || "Reagent",
         device: entry.device || "",
-        fridge_name: fridgeName,
+        fridge_name: "",
+        storage_status: "Pending Storage",
         lot_number: entry.lotNumber,
         unit: entry.unit || "unit",
         quantity_received: Number(entry.quantityReceived),
@@ -263,25 +296,21 @@ export default function App() {
         added_by: entry.receivedBy,
         low_stock_threshold: Number(entry.lowStockThreshold) || Math.ceil(Number(entry.quantityReceived) * ((config.low_stock_default_percent || 15) / 100)),
         intact_container: true, complete_compound: true, expiration_validity: true, lot_matches_kit: true, storage_condition_ok: true,
+      }).select().single();
+      if (insertErr || !inserted) throw insertErr || new Error("insert failed");
+      await supabase.from("receiving_records").insert({
+        reagent_id: inserted.id,
+        name: entry.name, department: entry.department, device: entry.device || "",
+        lot_number: entry.lotNumber, unit: entry.unit || "unit", quantity_received: Number(entry.quantityReceived),
+        expiry_date: entry.expiryDate || null, received_date: entry.receivedDate, received_by: entry.receivedBy,
+        storage_condition: entry.fridgeName || "",
       });
-      if (insertErr) throw insertErr;
-      if (fridgeName && fridgeName !== ROOM_TEMP) {
-        const month = (entry.receivedDate || todayISO()).slice(0, 7);
-        const { data: existingRows } = await supabase.from("fridge_inventory").select("row_order").eq("month", month).eq("refrigerator_name", fridgeName);
-        const maxOrder = (existingRows || []).reduce((m, r) => Math.max(m, r.row_order || 0), 0);
-        await supabase.from("fridge_inventory").insert({
-          month, refrigerator_name: fridgeName, counted_by: entry.receivedBy || "",
-          added_by: entry.receivedBy || "", device_group: entry.device || "",
-          item_name: entry.name, lot_number: entry.lotNumber, quantity: String(entry.quantityReceived),
-          expiry_date: entry.expiryDate || null, row_order: maxOrder + 1,
-        });
-      }
     }));
     const failedRows = results.filter((r) => r.status === "rejected");
     if (failedRows.length) {
       alert(`${failedRows.length} of ${rows.length} row(s) failed to import — please check those rows and try again. (${rows.length - failedRows.length} imported fine.)`);
     }
-    await logActivity("bulk_import", "reagent", `Imported ${rows.length - failedRows.length} of ${rows.length} lot(s) from file`);
+    await logActivity("bulk_import", "reagent", `Imported ${rows.length - failedRows.length} of ${rows.length} lot(s) from file — Pending Storage`);
     setShowImport(false);
     loadAll();
   }
@@ -615,6 +644,7 @@ export default function App() {
         {tab === "reports" && <Reports reagents={reagents} logs={logs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
         {tab === "settings" && (["admin","super","owner"].includes(role)) && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} fridgeNames={fridgeNames} reagents={reagents} logs={logs} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
         {tab === "fridges" && <FridgeInventory username={username} logActivity={logActivity} />}
+        {tab === "storageassignment" && <StorageAssignment reagents={reagents} role={role} onAssign={assignStorage} />}
         {tab === "charts" && (["admin","super","owner"].includes(role)) && <Charts reagents={reagents} logs={logs} />}
         {tab === "bloodbank" && <BloodBagTransactions username={username} role={role} />}
         {tab === "deletions" && ["super","owner"].includes(role) && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}
@@ -711,6 +741,7 @@ function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, o
         <SideGroupLabel>Inventory</SideGroupLabel>
         <SideBtn active={tab === "stock" || tab === "detail"} onClick={() => setTab("stock")} icon={<LayoutGrid size={16} />} label="Stock" />
         <SideBtn active={tab === "fridges"} onClick={() => setTab("fridges")} icon={<Refrigerator size={16} />} label="Fridges" />
+        <SideBtn active={tab === "storageassignment"} onClick={() => setTab("storageassignment")} icon={<Package size={16} />} label="Storage Assignment" />
         <SideBtn active={tab === "devices"} onClick={() => setTab("devices")} icon={<Cpu size={16} />} label="Devices" />
         <SideBtn active={tab === "orderplan"} onClick={() => setTab("orderplan")} icon={<ClipboardList size={16} />} label="Order Plan" />
 
