@@ -6,7 +6,6 @@ import Settings from "./Settings";
 import BarcodeScanner from "./BarcodeScanner";
 import ReceiveWizard, { YesNoRow } from "./ReceiveWizard";
 import Charts from "./Charts";
-import LabMap from "./LabMap";
 import BloodBankDisposal from "./BloodBankDisposal";
 import ReagentImport from "./ReagentImport";
 import FridgeInventory from "./FridgeInventory";
@@ -622,7 +621,6 @@ export default function App() {
         {tab === "settings" && (["admin","super","owner"].includes(role)) && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} fridgeNames={fridgeNames} reagents={reagents} logs={logs} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
         {tab === "fridges" && <FridgeInventory username={username} logActivity={logActivity} initialFridge={jumpFridge} />}
         {tab === "charts" && (["admin","super","owner"].includes(role)) && <Charts reagents={reagents} logs={logs} />}
-        {tab === "labmap" && <LabMap />}
         {tab === "bloodbank" && <BloodBankDisposal username={username} initialListType={jumpListType} />}
         {tab === "deletions" && ["super","owner"].includes(role) && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}
       </main>
@@ -724,7 +722,6 @@ function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, o
         <SideGroupLabel>Tracking</SideGroupLabel>
         <SideBtn active={tab === "reports"} onClick={() => setTab("reports")} icon={<FileText size={16} />} label="Reports" />
         {isAdmin && <SideBtn active={tab === "charts"} onClick={() => setTab("charts")} icon={<BarChart3 size={16} />} label="Charts" />}
-        <SideBtn active={tab === "labmap"} onClick={() => setTab("labmap")} icon={<LayoutGrid size={16} />} label="Lab map" />
         <div className="no-print">
           <button
             onClick={onToggleBbMenu}
@@ -735,7 +732,7 @@ function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, o
           {bbMenuOpen && (
             <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 26, marginBottom: 4 }}>
               <div style={{ fontSize: 10.5, color: "#8A9694", textTransform: "uppercase", marginTop: 4, marginBottom: 2 }}>Fridges</div>
-              {[["Lab0005", "Maged"], ["FFP", "Fawaz (FFP)"], ["PRBCs", "Fawaz (PRBCs)"]].map(([code, name]) => (
+              {[["FFP", "Fawaz (FFP)"], ["PRBCs", "Fawaz (PRBCs)"]].map(([code, name]) => (
                 <button key={code} onClick={() => { onJumpFridge(code); setTab("fridges"); }} style={{ background: "transparent", border: "none", color: "#5C6570", fontSize: 13, padding: "6px 8px", textAlign: "left", borderRadius: 6 }}>{name}</button>
               ))}
               <div style={{ fontSize: 10.5, color: "#8A9694", textTransform: "uppercase", marginTop: 8, marginBottom: 2 }}>Disposal lists</div>

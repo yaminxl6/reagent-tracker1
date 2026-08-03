@@ -3,9 +3,9 @@ import { Plus, Trash2, Download, Droplet, Printer } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 const LISTS = [
-  { key: "damaged", label: "Damaged blood" },
-  { key: "expired", label: "Expired blood" },
-  { key: "returned", label: "Returned to central bank" },
+  { key: "damaged", label: "Damaged blood", actionWord: "Disposed" },
+  { key: "expired", label: "Expired blood", actionWord: "Disposed" },
+  { key: "returned", label: "Returned to central bank", actionWord: "Returned" },
 ];
 
 export default function BloodBankDisposal({ username, initialListType }) {
@@ -25,6 +25,8 @@ export default function BloodBankDisposal({ username, initialListType }) {
   useEffect(() => { loadAll(); }, []);
 
   const rows = useMemo(() => (all || []).filter((r) => r.list_type === listType), [all, listType]);
+  const currentList = LISTS.find((l) => l.key === listType);
+  const actionWord = currentList?.actionWord || "Disposed";
 
   function isTempId(id) { return String(id).startsWith("temp-"); }
 
@@ -71,15 +73,14 @@ export default function BloodBankDisposal({ username, initialListType }) {
 
   async function exportExcel() {
     const XLSX = await import("xlsx");
-    const HEADERS = ["List", "Bag Number", "Blood Type", "Date Added", "Expiry Date", "Disposed Date", "Disposed By", "Note"];
-    const aoa = [HEADERS, ...(all || []).map((r) => [
-      LISTS.find((l) => l.key === r.list_type)?.label || r.list_type,
+    const HEADERS = ["Bag Number", "Blood Type", "Date Added", "Expiry Date", `${actionWord} Date`, `${actionWord} By`, "Note"];
+    const aoa = [HEADERS, ...rows.map((r) => [
       r.bag_number, r.blood_type, r.date_added, r.expiry_date, r.disposed_date, r.disposed_by, r.note,
     ])];
     const wb = XLSX.utils.book_new();
     const sheet = XLSX.utils.aoa_to_sheet(aoa);
-    XLSX.utils.book_append_sheet(wb, sheet, "Blood Bank Disposal");
-    XLSX.writeFile(wb, "blood-bank-disposal-report.xlsx");
+    XLSX.utils.book_append_sheet(wb, sheet, currentList?.label.slice(0, 31) || "Report");
+    XLSX.writeFile(wb, `blood-bank-${listType}-report.xlsx`);
   }
 
   const inputStyle = { width: "100%", border: "1px solid #E1E8E5", borderRadius: 6, padding: "6px 8px", fontSize: 13 };
@@ -90,7 +91,7 @@ export default function BloodBankDisposal({ username, initialListType }) {
         <Droplet size={20} color="#C1432B" /> Blood Bank — Damaged / Expired / Returned
       </h2>
       <div style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 16 }}>
-        Separate from the reagent report — tracks blood bag disposal specifically (bag number, when it expired, when it was disposed, and by whom).
+        Separate from the reagent report — tracks blood bags specifically (bag number, when it expired, when it was {actionWord.toLowerCase()}, and by whom).
       </div>
 
       <div className="no-print" style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
@@ -114,7 +115,7 @@ export default function BloodBankDisposal({ username, initialListType }) {
         <button onClick={saveAll} disabled={!dirty} style={{ background: dirty ? "#0F7173" : "#C7D1CE", color: "#fff", border: "none", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 700 }}>Save</button>
         {saveMsg && <span style={{ fontSize: 12.5, color: "#2F6B4F", fontWeight: 600, alignSelf: "center" }}>{saveMsg}</span>}
         <button onClick={() => window.print()} style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Printer size={14} /> Print</button>
-        <button onClick={exportExcel} style={{ background: "#378ADD", color: "#fff", border: "none", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Download size={14} /> Export Excel (all lists)</button>
+        <button onClick={exportExcel} style={{ background: "#378ADD", color: "#fff", border: "none", borderRadius: 7, padding: "8px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Download size={14} /> Export Excel ({currentList?.label})</button>
       </div>
 
       <div style={{ overflowX: "auto" }}>
@@ -125,8 +126,8 @@ export default function BloodBankDisposal({ username, initialListType }) {
               <th style={thStyle}>Blood Type</th>
               <th style={thStyle}>Date Added</th>
               <th style={thStyle}>Expiry Date</th>
-              <th style={thStyle}>Disposed Date</th>
-              <th style={thStyle}>Disposed By</th>
+              <th style={thStyle}>{actionWord} Date</th>
+              <th style={thStyle}>{actionWord} By</th>
               <th style={thStyle}>Note</th>
               <th className="no-print" style={{ ...thStyle, width: 30 }}></th>
             </tr>
