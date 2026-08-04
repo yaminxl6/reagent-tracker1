@@ -60,10 +60,12 @@ export default function BloodBagTransactions({ username, role }) {
       txn_date: form.date, performed_by: form.performedBy, note: form.note || "",
       locked: true,
     };
-    if (form.id) {
-      await supabase.from("blood_bag_transactions").update(payload).eq("id", form.id);
-    } else {
-      await supabase.from("blood_bag_transactions").insert(payload);
+    const { error } = form.id
+      ? await supabase.from("blood_bag_transactions").update(payload).eq("id", form.id)
+      : await supabase.from("blood_bag_transactions").insert(payload);
+    if (error) {
+      alert(`Could not save this record: ${error.message}`);
+      return;
     }
     setShowForm(false);
     setEditing(null);
@@ -73,7 +75,11 @@ export default function BloodBagTransactions({ username, role }) {
   async function deleteRecord(row) {
     if (!isAdmin) return;
     if (!confirm(`Permanently delete this transaction for bag ${row.bag_number}? This cannot be undone.`)) return;
-    await supabase.from("blood_bag_transactions").delete().eq("id", row.id);
+    const { error } = await supabase.from("blood_bag_transactions").delete().eq("id", row.id);
+    if (error) {
+      alert(`Could not delete this record: ${error.message}`);
+      return;
+    }
     loadAll();
   }
 
