@@ -21,8 +21,8 @@ export default function ReceiveWizard({ presets, reagents, devices, fridgeNames,
   const [showScanner, setShowScanner] = useState(false);
 
   const [form, setForm] = useState({
-    name: "", department: departments[0] || "", unit: "box", itemType: "Reagent", device: "", fridgeName: "",
-    lotNumber: "", boxesReceived: "1", kitsPerBox: "", quantityReceived: "", expiryDate: "",
+    name: "", department: departments[0] || "", unit: "kit", itemType: "Reagent", device: "", fridgeName: "",
+    lotNumber: "", boxesReceived: "1", kitsPerBox: "", quantityReceived: "", volumeMl: "", expiryDate: "",
     receivedBy: username || "", receivedDate: new Date().toISOString().slice(0, 10),
     lowStockThreshold: "",
     intact_container: true,
@@ -87,12 +87,23 @@ export default function ReceiveWizard({ presets, reagents, devices, fridgeNames,
     : [...new Set((reagents || []).filter((r) => !r.deleted).map((r) => r.name))];
   const itemOptions = [...new Set([...presetsForDept.map((p) => p.name), ...realNamesForDept])].sort();
 
-  const computedQty = Number(form.boxesReceived || 0) * Number(form.kitsPerBox || 1);
-  const step1Valid = form.name && form.lotNumber && form.boxesReceived && form.expiryDate && form.receivedBy && form.receivedDate;
+  const isVolumeType = form.itemType === "QC" || form.itemType === "Cal";
+  // Reagent: tracked as boxes x kits-per-box, and kits-per-box is now
+  // mandatory so stock is always tracked at the real usable unit (kit/test),
+  // never left silently as "1 box". QC/Cal: no boxes at all — quantity is
+  // entered directly as a volume in mL.
+  const computedQty = isVolumeType
+    ? Number(form.volumeMl || 0)
+    : Number(form.boxesReceived || 0) * Number(form.kitsPerBox || 0);
+  const computedUnit = isVolumeType ? "mL" : (form.unit || "kit");
+  const step1Valid = isVolumeType
+    ? (form.name && form.lotNumber && form.volumeMl && Number(form.volumeMl) > 0 && form.expiryDate && form.receivedBy && form.receivedDate)
+    : (form.name && form.lotNumber && form.boxesReceived && form.kitsPerBox && Number(form.kitsPerBox) > 0 && form.expiryDate && form.receivedBy && form.receivedDate);
 
   function finish() {
     onSubmit({
       ...form,
+      unit: computedUnit,
       quantityReceived: computedQty,
       lowStockThreshold: Number(form.lowStockThreshold) || Math.ceil(computedQty * 0.15),
     });
@@ -155,16 +166,28 @@ export default function ReceiveWizard({ presets, reagents, devices, fridgeNames,
               <button type="button" onClick={() => setShowScanner(true)} style={{ background: "#F0F3F2", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 10px" }}>
                 <ScanLine size={16} />
               </button>
-              <label style={{ ...labelStyle, width: 80 }}>Unit<input style={inputStyle} value={form.unit} onChange={set("unit")} /></label>
+              {!isVolumeType && <label style={{ ...labelStyle, width: 80 }}>Unit<input style={inputStyle} value={form.unit} onChange={set("unit")} /></label>}
             </div>
             <label style={labelStyle}>Expiry date<input type="date" lang="en-US" dir="ltr" style={inputStyle} value={form.expiryDate} onChange={set("expiryDate")} /></label>
-            <div style={{ display: "flex", gap: 10 }}>
-              <label style={{ ...labelStyle, flex: 1 }}>Boxes received<input type="number" min="1" style={inputStyle} value={form.boxesReceived} onChange={set("boxesReceived")} /></label>
-              <label style={{ ...labelStyle, flex: 1 }}>Kits per box (optional)<input type="number" min="1" placeholder="e.g. 4" style={inputStyle} value={form.kitsPerBox} onChange={set("kitsPerBox")} /></label>
-              <label style={{ ...labelStyle, flex: 1 }}>Low stock alert below<input type="number" style={inputStyle} value={form.lowStockThreshold} onChange={set("lowStockThreshold")} placeholder="auto" /></label>
-            </div>
+            {isVolumeType ? (
+              <div style={{ display: "flex", gap: 10 }}>
+                <label style={{ ...labelStyle, flex: 1 }}>Volume received (mL)<input type="number" min="0" step="0.1" style={inputStyle} value={form.volumeMl} onChange={set("volumeMl")} /></label>
+                <label style={{ ...labelStyle, flex: 1 }}>Low stock alert below (mL)<input type="number" style={inputStyle} value={form.lowStockThreshold} onChange={set("lowStockThreshold")} placeholder="auto" /></label>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 10 }}>
+                <label style={{ ...labelStyle, flex: 1 }}>Boxes received<input type="number" min="1" style={inputStyle} value={form.boxesReceived} onChange={set("boxesReceived")} /></label>
+                <label style={{ ...labelStyle, flex: 1 }}>Kits per box<input type="number" min="1" placeholder="e.g. 4" style={{ ...inputStyle, ...(!form.kitsPerBox ? { borderColor: "#C1432B" } : {}) }} value={form.kitsPerBox} onChange={set("kitsPerBox")} /></label>
+                <label style={{ ...labelStyle, flex: 1 }}>Low stock alert below<input type="number" style={inputStyle} value={form.lowStockThreshold} onChange={set("lowStockThreshold")} placeholder="auto" /></label>
+              </div>
+            )}
+            {!isVolumeType && !form.kitsPerBox && (
+              <div style={{ fontSize: 12, color: "#C1432B", marginTop: -6 }}>Required — how many kits/tests are inside each box, so stock is tracked at the real usable unit.</div>
+            )}
             <div style={{ fontSize: 12.5, color: "#516361", background: "#F0F3F2", borderRadius: 6, padding: "6px 10px" }}>
-              Total tracked as: <b>{computedQty || 0} {form.unit}</b> ({form.boxesReceived || 0} box{Number(form.boxesReceived) === 1 ? "" : "es"}{form.kitsPerBox ? ` × ${form.kitsPerBox} kit(s) per box` : ""})
+              {isVolumeType
+                ? <>Total tracked as: <b>{computedQty || 0} mL</b></>
+                : <>Total tracked as: <b>{computedQty || 0} {form.unit}</b> ({form.boxesReceived || 0} box{Number(form.boxesReceived) === 1 ? "" : "es"}{form.kitsPerBox ? ` × ${form.kitsPerBox} ${form.unit}(s) per box` : ""})</>}
             </div>
             <label style={labelStyle}>Notes (optional)
               <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} value={form.receivingNotes} onChange={set("receivingNotes")} placeholder="Any additional comment about this delivery" />

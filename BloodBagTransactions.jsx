@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, X, Search, Lock, Trash2 } from "lucide-react";
+import { Plus, X, Search, Lock, Trash2, Printer } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import SearchableSelect from "./SearchableSelect";
 
-const ACTIONS = ["Expired", "Discarded", "Returned to Blood Bank"];
+const ACTIONS = ["Dispensed", "Expired", "Discarded", "Returned to Blood Bank"];
 const REASONS = ["Contaminated", "Hemolyzed", "Broken Bag", "Leaking Bag", "Temperature Excursion", "Returned Too Late", "Improper Storage", "Other"];
 
 const BADGE = {
+  Dispensed: { text: "#175CD3", bg: "#EFF8FF", border: "#84CAFF" },
   Expired: { text: "#B42318", bg: "#FEF3F2", border: "#FDA29B" },
   Discarded: { text: "#B54708", bg: "#FFF6ED", border: "#F9A461" },
   "Returned to Blood Bank": { text: "#175CD3", bg: "#EFF8FF", border: "#84CAFF" },
@@ -53,6 +54,9 @@ export default function BloodBagTransactions({ username, role }) {
     const payload = {
       bag_number: form.bagNumber, blood_type: form.bloodType, action: form.action,
       reason: form.action === "Discarded" ? form.reason : "",
+      patient_name: form.action === "Dispensed" ? form.patientName : "",
+      patient_mrn: form.action === "Dispensed" ? form.patientMrn : "",
+      dispensed_department: form.action === "Dispensed" ? form.dispensedDepartment : "",
       txn_date: form.date, performed_by: form.performedBy, note: form.note || "",
       locked: true,
     };
@@ -78,17 +82,36 @@ export default function BloodBagTransactions({ username, role }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 10 }}>
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 650, color: "#101828", margin: 0 }}>Blood Bag Transactions</h2>
-          <div style={{ fontSize: 13, color: "#667085", marginTop: 3 }}>Every bag that has left inventory — expired, discarded, or returned to the central blood bank.</div>
+          <div style={{ fontSize: 13, color: "#667085", marginTop: 3 }}>Every bag that has left inventory — dispensed, expired, discarded, or returned to the central blood bank.</div>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          style={{ background: "#101828", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}
-        >
-          <Plus size={15} /> Add record
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => window.print()}
+            className="no-print"
+            style={{ background: "none", border: "1px solid #C7D1CE", color: "#516361", borderRadius: 10, padding: "9px 14px", fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}
+          >
+            <Printer size={15} /> Print report
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="no-print"
+            style={{ background: "#101828", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}
+          >
+            <Plus size={15} /> Add record
+          </button>
+        </div>
       </div>
 
-      <div style={{ display: "flex", gap: 10, margin: "20px 0", flexWrap: "wrap", alignItems: "center" }}>
+      <div className="print-only" style={{ display: "none" }}>
+        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 2 }}>Blood Bag Transactions Report</div>
+        <div style={{ fontSize: 12, color: "#444" }}>
+          {dateFrom || dateTo ? `Period: ${dateFrom || "…"} to ${dateTo || "…"}` : "Period: all records"}
+          {filterAction !== "All" ? ` — Filter: ${filterAction}` : ""}
+          {" — Generated "}{todayISO()}
+        </div>
+      </div>
+
+      <div className="no-print" style={{ display: "flex", gap: 10, margin: "20px 0", flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
           <Search size={14} color="#98A2B3" style={{ position: "absolute", left: 12, top: 11 }} />
           <input
@@ -124,14 +147,14 @@ export default function BloodBagTransactions({ username, role }) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
             <thead>
               <tr style={{ background: "#FAFBFC" }}>
-                {["Bag Number", "Blood Type", "Action", "Reason", "Date", "Performed By", "Note", ""].map((h) => (
-                  <th key={h} style={thStyle}>{h}</th>
+                {["Bag Number", "Blood Type", "Action", "Patient / Dept", "Reason", "Date", "Performed By", "Note", ""].map((h) => (
+                  <th key={h} className={h === "" ? "no-print" : ""} style={thStyle}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered && filtered.length === 0 && (
-                <tr><td colSpan={8} style={{ textAlign: "center", padding: 36, color: "#98A2B3", fontSize: 13.5 }}>No transactions recorded yet.</td></tr>
+                <tr><td colSpan={9} style={{ textAlign: "center", padding: 36, color: "#98A2B3", fontSize: 13.5 }}>No transactions recorded yet.</td></tr>
               )}
               {(filtered || []).map((r) => {
                 const b = BADGE[r.action] || BADGE.Expired;
@@ -144,11 +167,16 @@ export default function BloodBagTransactions({ username, role }) {
                         {r.action === "Returned to Blood Bank" ? "Returned" : r.action}
                       </span>
                     </td>
+                    <td style={{ ...tdStyle, color: "#667085" }}>
+                      {r.action === "Dispensed"
+                        ? <>{r.patient_name || "—"}{r.patient_mrn ? ` (MRN ${r.patient_mrn})` : ""}{r.dispensed_department ? ` — ${r.dispensed_department}` : ""}</>
+                        : "—"}
+                    </td>
                     <td style={{ ...tdStyle, color: "#667085" }}>{r.reason || "—"}</td>
                     <td style={{ ...tdStyle, color: "#667085" }}>{r.txn_date}</td>
                     <td style={{ ...tdStyle, color: "#667085" }}>{r.performed_by}</td>
                     <td style={{ ...tdStyle, color: "#667085", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis" }}>{r.note || "—"}</td>
-                    <td style={tdStyle}>
+                    <td className="no-print" style={tdStyle}>
                       {isAdmin ? (
                         <div style={{ display: "flex", gap: 6 }}>
                           <button onClick={() => setEditing(r)} style={{ background: "none", border: "1px solid #E5E7EB", color: "#667085", borderRadius: 7, padding: "4px 9px", fontSize: 11.5, fontWeight: 600 }}>Edit</button>
@@ -168,7 +196,14 @@ export default function BloodBagTransactions({ username, role }) {
         </div>
       </div>
 
-      <style>{`.bbt-row:hover { background: #FAFBFC; }`}</style>
+      <style>{`
+        .bbt-row:hover { background: #FAFBFC; }
+        .print-only { display: none; }
+        @media print {
+          .no-print { display: none !important; }
+          .print-only { display: block !important; margin-bottom: 14px; }
+        }
+      `}</style>
 
       {(showForm || editing) && (
         <RecordForm
@@ -188,6 +223,9 @@ function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
   const [bloodType, setBloodType] = useState(existing?.blood_type || "");
   const [action, setAction] = useState(existing?.action || "");
   const [reason, setReason] = useState(existing?.reason || "");
+  const [patientName, setPatientName] = useState(existing?.patient_name || "");
+  const [patientMrn, setPatientMrn] = useState(existing?.patient_mrn || "");
+  const [dispensedDepartment, setDispensedDepartment] = useState(existing?.dispensed_department || "");
   const [date, setDate] = useState(existing?.txn_date || todayISO());
   const [performedBy, setPerformedBy] = useState(existing?.performed_by || username || "");
   const [note, setNote] = useState(existing?.note || "");
@@ -198,7 +236,9 @@ function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
     setBloodType(match ? match.bloodType : "");
   }
 
-  const canSave = bagNumber && action && date && performedBy && (action !== "Discarded" || reason);
+  const canSave = bagNumber && action && date && performedBy
+    && (action !== "Discarded" || reason)
+    && (action !== "Dispensed" || (patientName && patientMrn && dispensedDepartment));
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(16,24,40,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }}>
@@ -238,6 +278,20 @@ function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
             </Field>
           )}
 
+          {action === "Dispensed" && (
+            <>
+              <Field label="Patient Name">
+                <input value={patientName} onChange={(e) => setPatientName(e.target.value)} style={inputStyle} placeholder="Full name" />
+              </Field>
+              <Field label="Patient File Number (MRN)">
+                <input value={patientMrn} onChange={(e) => setPatientMrn(e.target.value)} style={inputStyle} placeholder="MRN" />
+              </Field>
+              <Field label="Department">
+                <input value={dispensedDepartment} onChange={(e) => setDispensedDepartment(e.target.value)} style={inputStyle} placeholder="e.g. ER, ICU, OR" />
+              </Field>
+            </>
+          )}
+
           {action && (
             <>
               <Field label={action === "Returned to Blood Bank" ? "Return Date" : "Date"}>
@@ -254,7 +308,7 @@ function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
         </div>
 
         <button
-          onClick={() => onSave({ id: existing?.id, bagNumber, bloodType, action, reason, date, performedBy, note })}
+          onClick={() => onSave({ id: existing?.id, bagNumber, bloodType, action, reason, patientName, patientMrn, dispensedDepartment, date, performedBy, note })}
           disabled={!canSave}
           style={{
             marginTop: 20, width: "100%", border: "none", borderRadius: 10, padding: "11px", fontWeight: 650, fontSize: 14,
