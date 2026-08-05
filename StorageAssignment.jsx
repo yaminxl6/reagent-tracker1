@@ -1,7 +1,10 @@
 import React, { useState, useMemo } from "react";
 import { Package, CheckCircle2 } from "lucide-react";
 
-const STORAGE_LOCATIONS = ["Refrigerator 1", "Refrigerator 2", "Refrigerator 3", "Room Temperature", "Freezer (-20°C)", "Deep Freezer (-80°C)"];
+// "Freezer (-20°C)" and "Deep Freezer (-80°C)" aren't part of the app's
+// existing fridge inventory, so they're always offered in addition to
+// whatever real fridge names (fridgeNames prop) the lab already has.
+const EXTRA_LOCATIONS = ["Freezer (-20°C)", "Deep Freezer (-80°C)"];
 
 const thStyle = { textAlign: "left", padding: "11px 14px", fontSize: 11.5, fontWeight: 650, color: "#667085", textTransform: "uppercase", letterSpacing: 0.3 };
 const tdStyle = { padding: "12px 14px", color: "#344054", fontSize: 13.5 };
@@ -10,10 +13,11 @@ const tdStyle = { padding: "12px 14px", color: "#344054", fontSize: 13.5 };
 // authorized user assign one or many of them to a storage location. Staff
 // without admin/super/owner role can view the list but see no Assign
 // controls at all (view-only, per the requested permission model).
-export default function StorageAssignment({ reagents, role, onAssign }) {
+export default function StorageAssignment({ reagents, role, fridgeNames, onAssign }) {
   const isAuthorized = ["admin", "super", "owner"].includes(role);
+  const locations = useMemo(() => [...(fridgeNames || []), ...EXTRA_LOCATIONS], [fridgeNames]);
   const [selected, setSelected] = useState([]);
-  const [batchLocation, setBatchLocation] = useState(STORAGE_LOCATIONS[0]);
+  const [batchLocation, setBatchLocation] = useState("");
   const [rowLocation, setRowLocation] = useState({}); // per-row picked location before single Assign click
   const [busy, setBusy] = useState(false);
 
@@ -30,7 +34,7 @@ export default function StorageAssignment({ reagents, role, onAssign }) {
   }
 
   async function assignOne(id) {
-    const loc = rowLocation[id] || STORAGE_LOCATIONS[0];
+    const loc = rowLocation[id] || locations[0];
     setBusy(true);
     await onAssign([id], loc);
     setBusy(false);
@@ -39,8 +43,9 @@ export default function StorageAssignment({ reagents, role, onAssign }) {
 
   async function assignSelected() {
     if (selected.length === 0) return;
+    const loc = batchLocation || locations[0];
     setBusy(true);
-    await onAssign(selected, batchLocation);
+    await onAssign(selected, loc);
     setBusy(false);
     setSelected([]);
   }
@@ -61,8 +66,8 @@ export default function StorageAssignment({ reagents, role, onAssign }) {
           <div style={{ display: "flex", gap: 8, alignItems: "center", background: "#F7F8FA", borderRadius: 10, padding: "8px 10px" }}>
             <span style={{ fontSize: 13, color: "#344054", fontWeight: 600 }}>{selected.length} selected</span>
             <span style={{ fontSize: 13, color: "#667085" }}>Assign to</span>
-            <select value={batchLocation} onChange={(e) => setBatchLocation(e.target.value)} style={{ border: "1px solid #E5E7EB", borderRadius: 8, padding: "7px 10px", fontSize: 13 }}>
-              {STORAGE_LOCATIONS.map((l) => <option key={l} value={l}>{l}</option>)}
+            <select value={batchLocation || locations[0] || ""} onChange={(e) => setBatchLocation(e.target.value)} style={{ border: "1px solid #E5E7EB", borderRadius: 8, padding: "7px 10px", fontSize: 13 }}>
+              {locations.map((l) => <option key={l} value={l}>{l}</option>)}
             </select>
             <button
               disabled={busy}
@@ -111,11 +116,11 @@ export default function StorageAssignment({ reagents, role, onAssign }) {
                     {isAuthorized ? (
                       <div style={{ display: "flex", gap: 6 }}>
                         <select
-                          value={rowLocation[r.id] || STORAGE_LOCATIONS[0]}
+                          value={rowLocation[r.id] || locations[0]}
                           onChange={(e) => setRowLocation((m) => ({ ...m, [r.id]: e.target.value }))}
                           style={{ border: "1px solid #E5E7EB", borderRadius: 7, padding: "5px 7px", fontSize: 12.5 }}
                         >
-                          {STORAGE_LOCATIONS.map((l) => <option key={l} value={l}>{l}</option>)}
+                          {locations.map((l) => <option key={l} value={l}>{l}</option>)}
                         </select>
                         <button
                           disabled={busy}

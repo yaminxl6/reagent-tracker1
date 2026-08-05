@@ -3,3 +3,4 @@
 alter table blood_bag_transactions add column if not exists patient_name text;
 alter table blood_bag_transactions add column if not exists patient_mrn text;
 alter table blood_bag_transactions add column if not exists dispensed_department text;
+alter table blood_bag_transactions add column if not exists component_type text;

@@ -23,9 +23,6 @@ const DEPT_PALETTE = ["#0F7173", "#B5473A", "#8A5A2B", "#5A6ACF", "#2F8F5B", "#B
 // need refrigeration (kept in the regular storeroom instead).
 const BASE_FRIDGES = ["Lab0202", "Lab0007", "Lab0005", "Lab00014"];
 const ROOM_TEMP = "Room Temperature (Warehouse)";
-// Fixed list offered on the Storage Assignment page, per the new receiving
-// workflow. Separate from BASE_FRIDGES/fridgeNames used elsewhere in the app.
-const STORAGE_LOCATIONS = ["Refrigerator 1", "Refrigerator 2", "Refrigerator 3", "Room Temperature", "Freezer (-20°C)", "Deep Freezer (-80°C)"];
 function deptColor(dept, list) {
   const i = Math.max(0, list.indexOf(dept));
   return DEPT_PALETTE[i % DEPT_PALETTE.length];
@@ -644,7 +641,7 @@ export default function App() {
         {tab === "reports" && <Reports reagents={reagents} logs={logs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
         {tab === "settings" && (["admin","super","owner"].includes(role)) && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} fridgeNames={fridgeNames} reagents={reagents} logs={logs} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
         {tab === "fridges" && <FridgeInventory username={username} logActivity={logActivity} />}
-        {tab === "storageassignment" && <StorageAssignment reagents={reagents} role={role} onAssign={assignStorage} />}
+        {tab === "storageassignment" && <StorageAssignment reagents={reagents} role={role} fridgeNames={fridgeNames} onAssign={assignStorage} />}
         {tab === "charts" && (["admin","super","owner"].includes(role)) && <Charts reagents={reagents} logs={logs} />}
         {tab === "bloodbank" && <BloodBagTransactions username={username} role={role} />}
         {tab === "deletions" && ["super","owner"].includes(role) && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}

@@ -5,6 +5,7 @@ import SearchableSelect from "./SearchableSelect";
 
 const ACTIONS = ["Dispensed", "Expired", "Discarded", "Returned to Blood Bank"];
 const REASONS = ["Contaminated", "Hemolyzed", "Broken Bag", "Leaking Bag", "Temperature Excursion", "Returned Too Late", "Improper Storage", "Other"];
+const BLOOD_TYPES = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"];
 
 const BADGE = {
   Dispensed: { text: "#175CD3", bg: "#EFF8FF", border: "#84CAFF" },
@@ -34,10 +35,10 @@ export default function BloodBagTransactions({ username, role }) {
     setRows(data || []);
   }
   async function loadBagOptions() {
-    const { data } = await supabase.from("fridge_inventory").select("lot_number, blood_type").in("refrigerator_name", ["FFP", "PRBCs"]);
+    const { data } = await supabase.from("fridge_inventory").select("lot_number, blood_type, refrigerator_name").in("refrigerator_name", ["FFP", "PRBCs"]);
     const map = {};
-    (data || []).forEach((r) => { if (r.lot_number) map[r.lot_number] = r.blood_type || ""; });
-    setBagOptions(Object.entries(map).map(([bag, bloodType]) => ({ bag, bloodType })));
+    (data || []).forEach((r) => { if (r.lot_number) map[r.lot_number] = { bloodType: r.blood_type || "", component: r.refrigerator_name || "" }; });
+    setBagOptions(Object.entries(map).map(([bag, v]) => ({ bag, bloodType: v.bloodType, component: v.component })));
   }
   useEffect(() => { loadAll(); loadBagOptions(); }, []);
 
@@ -52,7 +53,7 @@ export default function BloodBagTransactions({ username, role }) {
 
   async function saveRecord(form) {
     const payload = {
-      bag_number: form.bagNumber, blood_type: form.bloodType, action: form.action,
+      bag_number: form.bagNumber, blood_type: form.bloodType, component_type: form.componentType, action: form.action,
       reason: form.action === "Discarded" ? form.reason : "",
       patient_name: form.action === "Dispensed" ? form.patientName : "",
       patient_mrn: form.action === "Dispensed" ? form.patientMrn : "",
@@ -167,7 +168,7 @@ export default function BloodBagTransactions({ username, role }) {
                 return (
                   <tr key={r.id} className="bbt-row" style={{ borderTop: "1px solid #F0F2F5" }}>
                     <td style={{ ...tdStyle, fontWeight: 600, color: "#101828" }}>{r.bag_number}</td>
-                    <td style={tdStyle}>{r.blood_type || "—"}</td>
+                    <td style={tdStyle}>{r.blood_type || "—"}{r.component_type ? ` · ${r.component_type}` : ""}</td>
                     <td style={tdStyle}>
                       <span style={{ fontSize: 11.5, fontWeight: 700, color: b.text, background: b.bg, border: `1px solid ${b.border}`, padding: "3px 9px", borderRadius: 20 }}>
                         {r.action === "Returned to Blood Bank" ? "Returned" : r.action}
@@ -227,6 +228,7 @@ export default function BloodBagTransactions({ username, role }) {
 function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
   const [bagNumber, setBagNumber] = useState(existing?.bag_number || "");
   const [bloodType, setBloodType] = useState(existing?.blood_type || "");
+  const [componentType, setComponentType] = useState(existing?.component_type || "");
   const [action, setAction] = useState(existing?.action || "");
   const [reason, setReason] = useState(existing?.reason || "");
   const [patientName, setPatientName] = useState(existing?.patient_name || "");
@@ -239,10 +241,16 @@ function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
   function pickBag(bag) {
     setBagNumber(bag);
     const match = bagOptions.find((o) => o.bag === bag);
-    setBloodType(match ? match.bloodType : "");
+    // Auto-fills as a convenience when the bag is a known one from fridge
+    // inventory, but the fields stay editable — the user can always pick
+    // the blood type and component manually instead of relying on lookup.
+    if (match) {
+      if (match.bloodType) setBloodType(match.bloodType);
+      if (match.component) setComponentType(match.component);
+    }
   }
 
-  const canSave = bagNumber && action && date && performedBy
+  const canSave = bagNumber && bloodType && componentType && action && date && performedBy
     && (action !== "Discarded" || reason)
     && (action !== "Dispensed" || (patientName && patientMrn && dispensedDepartment));
 
@@ -259,9 +267,21 @@ function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
             <SearchableSelect value={bagNumber} onChange={pickBag} options={bagOptions.map((o) => o.bag)} placeholder="Search bag number…" allowCustom={!existing} />
           </Field>
 
-          <Field label="Blood Type">
-            <input value={bloodType} readOnly placeholder="Loads after selecting a bag" style={{ ...inputStyle, background: "#F7F8FA", color: "#667085" }} />
-          </Field>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Field label="Blood Type" style={{ flex: 1 }}>
+              <select value={bloodType} onChange={(e) => setBloodType(e.target.value)} style={inputStyle}>
+                <option value="">Select…</option>
+                {BLOOD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label="Component" style={{ flex: 1 }}>
+              <select value={componentType} onChange={(e) => setComponentType(e.target.value)} style={inputStyle}>
+                <option value="">Select…</option>
+                <option value="FFP">FFP</option>
+                <option value="PRBCs">PRBC</option>
+              </select>
+            </Field>
+          </div>
 
           <Field label="Action">
             <select
@@ -314,7 +334,7 @@ function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
         </div>
 
         <button
-          onClick={() => onSave({ id: existing?.id, bagNumber, bloodType, action, reason, patientName, patientMrn, dispensedDepartment, date, performedBy, note })}
+          onClick={() => onSave({ id: existing?.id, bagNumber, bloodType, componentType, action, reason, patientName, patientMrn, dispensedDepartment, date, performedBy, note })}
           disabled={!canSave}
           style={{
             marginTop: 20, width: "100%", border: "none", borderRadius: 10, padding: "11px", fontWeight: 650, fontSize: 14,
@@ -328,9 +348,9 @@ function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
   );
 }
 
-function Field({ label, children }) {
+function Field({ label, children, style }) {
   return (
-    <label style={{ display: "block" }}>
+    <label style={{ display: "block", ...style }}>
       <div style={{ fontSize: 12.5, fontWeight: 600, color: "#344054", marginBottom: 5 }}>{label}</div>
       {children}
     </label>
