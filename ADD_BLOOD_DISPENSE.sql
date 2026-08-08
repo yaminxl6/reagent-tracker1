@@ -4,3 +4,10 @@ alter table blood_bag_transactions add column if not exists patient_name text;
 alter table blood_bag_transactions add column if not exists patient_mrn text;
 alter table blood_bag_transactions add column if not exists dispensed_department text;
 alter table blood_bag_transactions add column if not exists component_type text;
+
+-- The table had an existing CHECK constraint on `action` from before this
+-- feature that only allowed the original three actions. Widen it to also
+-- allow "Dispensed".
+alter table blood_bag_transactions drop constraint if exists blood_bag_transactions_action_check;
+alter table blood_bag_transactions add constraint blood_bag_transactions_action_check
+  check (action in ('Dispensed', 'Expired', 'Discarded', 'Returned to Blood Bank'));

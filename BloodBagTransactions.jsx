@@ -357,6 +357,6 @@ function Field({ label, children, style }) {
   );
 }
 
-const thStyle = { textAlign: "left", padding: "11px 16px", fontSize: 11.5, fontWeight: 650, color: "#667085", textTransform: "uppercase", letterSpacing: 0.3 };
-const tdStyle = { padding: "12px 16px", color: "#344054" };
+const thStyle = { textAlign: "left", padding: "11px 16px", fontSize: 11.5, fontWeight: 650, color: "#667085", textTransform: "uppercase", letterSpacing: 0.3, whiteSpace: "nowrap" };
+const tdStyle = { padding: "12px 16px", color: "#344054", whiteSpace: "nowrap" };
 const inputStyle = { width: "100%", border: "1px solid #E5E7EB", borderRadius: 9, padding: "9px 11px", fontSize: 13.5, boxSizing: "border-box" };
