@@ -643,7 +643,7 @@ export default function App() {
         {tab === "fridges" && <FridgeInventory username={username} logActivity={logActivity} />}
         {tab === "storageassignment" && <StorageAssignment reagents={reagents} role={role} fridgeNames={fridgeNames} onAssign={assignStorage} />}
         {tab === "charts" && (["admin","super","owner"].includes(role)) && <Charts reagents={reagents} logs={logs} />}
-        {tab === "bloodbank" && <BloodBagTransactions username={username} role={role} />}
+        {tab === "bloodbank" && <BloodBagTransactions username={username} role={role} departments={config.departments || []} />}
         {tab === "deletions" && ["super","owner"].includes(role) && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}
       </main>
         </div>

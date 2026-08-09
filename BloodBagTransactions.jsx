@@ -19,7 +19,7 @@ function todayISO() {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
-export default function BloodBagTransactions({ username, role }) {
+export default function BloodBagTransactions({ username, role, departments = [] }) {
   const isAdmin = ["admin", "super", "owner"].includes(role);
   const [rows, setRows] = useState(null);
   const [bagOptions, setBagOptions] = useState([]); // [{bag, bloodType}]
@@ -35,10 +35,10 @@ export default function BloodBagTransactions({ username, role }) {
     setRows(data || []);
   }
   async function loadBagOptions() {
-    const { data } = await supabase.from("fridge_inventory").select("lot_number, blood_type, refrigerator_name").in("refrigerator_name", ["FFP", "PRBCs"]);
+    const { data } = await supabase.from("fridge_inventory").select("lot_number, blood_type, refrigerator_name, expiry_date").in("refrigerator_name", ["FFP", "PRBCs"]);
     const map = {};
-    (data || []).forEach((r) => { if (r.lot_number) map[r.lot_number] = { bloodType: r.blood_type || "", component: r.refrigerator_name || "" }; });
-    setBagOptions(Object.entries(map).map(([bag, v]) => ({ bag, bloodType: v.bloodType, component: v.component })));
+    (data || []).forEach((r) => { if (r.lot_number) map[r.lot_number] = { bloodType: r.blood_type || "", component: r.refrigerator_name || "", expiryDate: r.expiry_date || "" }; });
+    setBagOptions(Object.entries(map).map(([bag, v]) => ({ bag, bloodType: v.bloodType, component: v.component, expiryDate: v.expiryDate })));
   }
   useEffect(() => { loadAll(); loadBagOptions(); }, []);
 
@@ -53,7 +53,7 @@ export default function BloodBagTransactions({ username, role }) {
 
   async function saveRecord(form) {
     const payload = {
-      bag_number: form.bagNumber, blood_type: form.bloodType, component_type: form.componentType, action: form.action,
+      bag_number: form.bagNumber, blood_type: form.bloodType, component_type: form.componentType, expiry_date: form.expiryDate || null, action: form.action,
       reason: form.action === "Discarded" ? form.reason : "",
       patient_name: form.action === "Issued" ? form.patientName : "",
       patient_mrn: form.action === "Issued" ? form.patientMrn : "",
@@ -154,14 +154,14 @@ export default function BloodBagTransactions({ username, role }) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
             <thead>
               <tr style={{ background: "#FAFBFC" }}>
-                {["Bag Number", "Blood Type", "Action", "Patient / Dept", "Reason", "Date", "Performed By", "Note", ""].map((h) => (
+                {["Bag Number", "Blood Type", "Bag Expiry", "Action", "Patient / Dept", "Reason", "Date", "Performed By", "Note", ""].map((h) => (
                   <th key={h} className={h === "" ? "no-print" : ""} style={thStyle}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered && filtered.length === 0 && (
-                <tr><td colSpan={9} style={{ textAlign: "center", padding: 36, color: "#98A2B3", fontSize: 13.5 }}>No transactions recorded yet.</td></tr>
+                <tr><td colSpan={10} style={{ textAlign: "center", padding: 36, color: "#98A2B3", fontSize: 13.5 }}>No transactions recorded yet.</td></tr>
               )}
               {(filtered || []).map((r) => {
                 const b = BADGE[r.action] || BADGE.Expired;
@@ -169,6 +169,7 @@ export default function BloodBagTransactions({ username, role }) {
                   <tr key={r.id} className="bbt-row" style={{ borderTop: "1px solid #F0F2F5" }}>
                     <td style={{ ...tdStyle, fontWeight: 600, color: "#101828" }}>{r.bag_number}</td>
                     <td style={tdStyle}>{r.blood_type || "—"}{r.component_type ? ` · ${r.component_type}` : ""}</td>
+                    <td style={{ ...tdStyle, color: "#667085" }}>{r.expiry_date || "—"}</td>
                     <td style={tdStyle}>
                       <span style={{ fontSize: 11.5, fontWeight: 700, color: b.text, background: b.bg, border: `1px solid ${b.border}`, padding: "3px 9px", borderRadius: 20 }}>
                         {r.action === "Returned to Blood Bank" ? "Returned" : r.action}
@@ -215,6 +216,7 @@ export default function BloodBagTransactions({ username, role }) {
       {(showForm || editing) && (
         <RecordForm
           bagOptions={bagOptions}
+          departments={departments}
           username={username}
           existing={editing}
           onClose={() => { setShowForm(false); setEditing(null); }}
@@ -225,10 +227,11 @@ export default function BloodBagTransactions({ username, role }) {
   );
 }
 
-function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
+function RecordForm({ bagOptions, departments, username, existing, onClose, onSave }) {
   const [bagNumber, setBagNumber] = useState(existing?.bag_number || "");
   const [bloodType, setBloodType] = useState(existing?.blood_type || "");
   const [componentType, setComponentType] = useState(existing?.component_type || "");
+  const [expiryDate, setExpiryDate] = useState(existing?.expiry_date || "");
   const [action, setAction] = useState(existing?.action || "");
   const [reason, setReason] = useState(existing?.reason || "");
   const [patientName, setPatientName] = useState(existing?.patient_name || "");
@@ -247,12 +250,13 @@ function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
     if (match) {
       if (match.bloodType) setBloodType(match.bloodType);
       if (match.component) setComponentType(match.component);
+      if (match.expiryDate) setExpiryDate(match.expiryDate);
     }
   }
 
-  const canSave = bagNumber && bloodType && componentType && action && date && performedBy
+  const canSave = bagNumber && bloodType && componentType && expiryDate && action && date && performedBy
     && (action !== "Discarded" || reason)
-    && (action !== "Issued" || (patientName && patientMrn && dispensedDepartment));
+    && (action !== "Issued" || (patientName && patientMrn));
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(16,24,40,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }}>
@@ -283,6 +287,10 @@ function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
             </Field>
           </div>
 
+          <Field label="Bag Expiry Date">
+            <input type="date" lang="en-US" dir="ltr" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} style={inputStyle} />
+          </Field>
+
           <Field label="Action">
             <select
               value={action}
@@ -312,8 +320,14 @@ function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
               <Field label="Patient File Number (MRN)">
                 <input value={patientMrn} onChange={(e) => setPatientMrn(e.target.value)} style={inputStyle} placeholder="MRN" />
               </Field>
-              <Field label="Department">
-                <input value={dispensedDepartment} onChange={(e) => setDispensedDepartment(e.target.value)} style={inputStyle} placeholder="e.g. ER, ICU, OR" />
+              <Field label="Department (optional)">
+                <SearchableSelect
+                  value={dispensedDepartment}
+                  onChange={setDispensedDepartment}
+                  options={departments}
+                  placeholder="Search or type a department…"
+                  allowCustom
+                />
               </Field>
             </>
           )}
@@ -334,7 +348,7 @@ function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
         </div>
 
         <button
-          onClick={() => onSave({ id: existing?.id, bagNumber, bloodType, componentType, action, reason, patientName, patientMrn, dispensedDepartment, date, performedBy, note })}
+          onClick={() => onSave({ id: existing?.id, bagNumber, bloodType, componentType, expiryDate, action, reason, patientName, patientMrn, dispensedDepartment, date, performedBy, note })}
           disabled={!canSave}
           style={{
             marginTop: 20, width: "100%", border: "none", borderRadius: 10, padding: "11px", fontWeight: 650, fontSize: 14,
