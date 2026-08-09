@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Trash2, Plus, Save, Eye, EyeOff, Pencil, ChevronDown, KeyRound } from "lucide-react";
+import { Trash2, Plus, Save, Eye, EyeOff, Pencil, ChevronDown } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 const THEME_PRESETS = [
@@ -48,8 +48,6 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   const [newDevice, setNewDevice] = useState({ name: "", department: departments[0] || "", default_fridge_name: "" });
   const [newStaff, setNewStaff] = useState({ username: "", password: "", display_name: "" });
   const [staffMsg, setStaffMsg] = useState("");
-  const [resettingStaffId, setResettingStaffId] = useState(null);
-  const [resetStaffPw, setResetStaffPw] = useState("");
   const [showPasswords, setShowPasswords] = useState(false);
   const [creds, setCreds] = useState({
     lab_username: config.lab_username,
@@ -356,20 +354,6 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     reload();
   }
 
-  async function resetStaffPassword(id, uname) {
-    if (!resetStaffPw || resetStaffPw.length < 4) {
-      setStaffMsg("Choose a temporary password at least 4 characters long.");
-      return;
-    }
-    await supabase.from("staff_accounts").update({ password: resetStaffPw, must_change_password: true }).eq("id", id);
-    await logActivity?.("staff_password_reset", "staff", uname);
-    setResettingStaffId(null);
-    setResetStaffPw("");
-    setStaffMsg("Password reset. They'll be asked to set a new one at their next sign-in.");
-    reload();
-    setTimeout(() => setStaffMsg(""), 3500);
-  }
-
   async function addPreset() {
     if (!newPreset.name) return;
     await supabase.from("reagent_presets").insert(newPreset);
@@ -568,7 +552,7 @@ export default function Settings({ config, presets, role, staffAccounts, devices
         <Section title="Employee Accounts" open={!!openSections.employees} onToggle={() => toggleSection("employees")}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, letterSpacing: 0.3 }}>EMPLOYEE ACCOUNTS</div>
           <div style={{ fontSize: 12.5, color: "#7B8E8A", marginBottom: 12 }}>
-            Create a personal login for each employee. The username/password can be their employee number — what shows up on receiving records and usage logs is always their real name below, never the login itself. {role === "owner" ? "As Owner, you can also grant any employee a higher role, or reset their password if they forget it, below." : "They get regular staff permissions (no delete, no settings)."}
+            Create a personal login for each employee. The username/password can be their employee number — what shows up on receiving records and usage logs is always their real name below, never the login itself. {role === "owner" ? "As Owner, you can also grant any employee a higher role below." : "They get regular staff permissions (no delete, no settings)."}
           </div>
           <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 10, padding: 14, marginBottom: 16 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -600,43 +584,21 @@ export default function Settings({ config, presets, role, staffAccounts, devices
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 30 }}>
             {(staffAccounts || []).length === 0 && <div style={{ fontSize: 13, color: "#8A9694" }}>No individual employee accounts yet — everyone shares the "Staff username/password" below.</div>}
             {(staffAccounts || []).map((s) => (
-              <div key={s.id} style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, padding: "9px 14px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{s.display_name || s.username}</div>
-                    <div style={{ fontSize: 11, color: "#8A9694" }}>login: {s.username}</div>
-                  </div>
-                  {role === "owner" ? (
-                    <select value={s.role || "staff"} onChange={(e) => updateStaffRole(s.id, s.username, e.target.value)} style={{ ...inputStyle, width: 110, marginTop: 0 }}>
-                      <option value="staff">Staff</option>
-                      <option value="admin">Admin</option>
-                      <option value="super">Super</option>
-                    </select>
-                  ) : (
-                    <span style={{ fontSize: 11.5, color: "#8A9694", textTransform: "capitalize" }}>{s.role || "staff"}</span>
-                  )}
-                  {role === "owner" && (
-                    <button
-                      onClick={() => { setResettingStaffId(resettingStaffId === s.id ? null : s.id); setResetStaffPw(""); }}
-                      title="Reset password"
-                      style={{ background: "none", border: "none", color: "#0F7173" }}
-                    ><KeyRound size={15} /></button>
-                  )}
-                  <button onClick={() => removeStaffAccount(s.id, s.username)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={15} /></button>
+              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, padding: "9px 14px" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>{s.display_name || s.username}</div>
+                  <div style={{ fontSize: 11, color: "#8A9694" }}>login: {s.username}</div>
                 </div>
-                {resettingStaffId === s.id && (
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: "1px solid #EDEFF2" }}>
-                    <input
-                      placeholder="New temporary password"
-                      type={(showPasswords && canRevealPasswords) ? "text" : "password"}
-                      value={resetStaffPw}
-                      onChange={(e) => setResetStaffPw(e.target.value)}
-                      style={{ ...inputStyle, flex: 1, marginTop: 0 }}
-                    />
-                    <button onClick={() => resetStaffPassword(s.id, s.username)} style={{ background: "#0F7173", color: "#fff", border: "none", borderRadius: 7, padding: "9px 14px", fontWeight: 700, fontSize: 12.5 }}>Reset</button>
-                    <button onClick={() => { setResettingStaffId(null); setResetStaffPw(""); }} style={{ background: "none", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 12px", fontSize: 12.5 }}>Cancel</button>
-                  </div>
+                {role === "owner" ? (
+                  <select value={s.role || "staff"} onChange={(e) => updateStaffRole(s.id, s.username, e.target.value)} style={{ ...inputStyle, width: 110, marginTop: 0 }}>
+                    <option value="staff">Staff</option>
+                    <option value="admin">Admin</option>
+                    <option value="super">Super</option>
+                  </select>
+                ) : (
+                  <span style={{ fontSize: 11.5, color: "#8A9694", textTransform: "capitalize" }}>{s.role || "staff"}</span>
                 )}
+                <button onClick={() => removeStaffAccount(s.id, s.username)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={15} /></button>
               </div>
             ))}
           </div>

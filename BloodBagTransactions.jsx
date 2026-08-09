@@ -3,12 +3,12 @@ import { Plus, X, Search, Lock, Trash2, Printer } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import SearchableSelect from "./SearchableSelect";
 
-const ACTIONS = ["Dispensed", "Expired", "Discarded", "Returned to Blood Bank"];
+const ACTIONS = ["Issued", "Expired", "Discarded", "Returned to Blood Bank"];
 const REASONS = ["Contaminated", "Hemolyzed", "Broken Bag", "Leaking Bag", "Temperature Excursion", "Returned Too Late", "Improper Storage", "Other"];
 const BLOOD_TYPES = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"];
 
 const BADGE = {
-  Dispensed: { text: "#175CD3", bg: "#EFF8FF", border: "#84CAFF" },
+  Issued: { text: "#175CD3", bg: "#EFF8FF", border: "#84CAFF" },
   Expired: { text: "#B42318", bg: "#FEF3F2", border: "#FDA29B" },
   Discarded: { text: "#B54708", bg: "#FFF6ED", border: "#F9A461" },
   "Returned to Blood Bank": { text: "#175CD3", bg: "#EFF8FF", border: "#84CAFF" },
@@ -55,9 +55,9 @@ export default function BloodBagTransactions({ username, role }) {
     const payload = {
       bag_number: form.bagNumber, blood_type: form.bloodType, component_type: form.componentType, action: form.action,
       reason: form.action === "Discarded" ? form.reason : "",
-      patient_name: form.action === "Dispensed" ? form.patientName : "",
-      patient_mrn: form.action === "Dispensed" ? form.patientMrn : "",
-      dispensed_department: form.action === "Dispensed" ? form.dispensedDepartment : "",
+      patient_name: form.action === "Issued" ? form.patientName : "",
+      patient_mrn: form.action === "Issued" ? form.patientMrn : "",
+      dispensed_department: form.action === "Issued" ? form.dispensedDepartment : "",
       txn_date: form.date, performed_by: form.performedBy, note: form.note || "",
       locked: true,
     };
@@ -89,7 +89,7 @@ export default function BloodBagTransactions({ username, role }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 10 }}>
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 650, color: "#101828", margin: 0 }}>Blood Bag Transactions</h2>
-          <div style={{ fontSize: 13, color: "#667085", marginTop: 3 }}>Every bag that has left inventory — dispensed, expired, discarded, or returned to the central blood bank.</div>
+          <div style={{ fontSize: 13, color: "#667085", marginTop: 3 }}>Every bag that has left inventory — issued, expired, discarded, or returned to the central blood bank.</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button
@@ -175,7 +175,7 @@ export default function BloodBagTransactions({ username, role }) {
                       </span>
                     </td>
                     <td style={{ ...tdStyle, color: "#667085" }}>
-                      {r.action === "Dispensed"
+                      {r.action === "Issued"
                         ? <>{r.patient_name || "—"}{r.patient_mrn ? ` (MRN ${r.patient_mrn})` : ""}{r.dispensed_department ? ` — ${r.dispensed_department}` : ""}</>
                         : "—"}
                     </td>
@@ -252,7 +252,7 @@ function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
 
   const canSave = bagNumber && bloodType && componentType && action && date && performedBy
     && (action !== "Discarded" || reason)
-    && (action !== "Dispensed" || (patientName && patientMrn && dispensedDepartment));
+    && (action !== "Issued" || (patientName && patientMrn && dispensedDepartment));
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(16,24,40,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }}>
@@ -304,7 +304,7 @@ function RecordForm({ bagOptions, username, existing, onClose, onSave }) {
             </Field>
           )}
 
-          {action === "Dispensed" && (
+          {action === "Issued" && (
             <>
               <Field label="Patient Name">
                 <input value={patientName} onChange={(e) => setPatientName(e.target.value)} style={inputStyle} placeholder="Full name" />
