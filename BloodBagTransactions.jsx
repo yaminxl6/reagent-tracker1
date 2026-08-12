@@ -149,9 +149,9 @@ export default function BloodBagTransactions({ username, role, departments = [] 
         <input type="date" lang="en-US" dir="ltr" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: "8px 10px", fontSize: 13 }} />
       </div>
 
-      <div style={{ background: "#fff", border: "1px solid #EEF1F4", borderRadius: 16, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+      <div className="bbt-card" style={{ background: "#fff", border: "1px solid #EEF1F4", borderRadius: 16, overflow: "hidden" }}>
+        <div className="bbt-scroll" style={{ overflowX: "auto" }}>
+          <table className="bbt-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
             <thead>
               <tr style={{ background: "#FAFBFC" }}>
                 {["Bag Number", "Blood Type", "Bag Expiry", "Action", "Patient / Dept", "Reason", "Date", "Performed By", "Note", ""].map((h) => (
@@ -210,6 +210,20 @@ export default function BloodBagTransactions({ username, role, departments = [] 
         @media print {
           .no-print { display: none !important; }
           .print-only { display: block !important; margin-bottom: 14px; }
+          .bbt-card, .bbt-scroll { overflow: visible !important; }
+          .bbt-table { width: 100% !important; table-layout: fixed; }
+          .bbt-table th, .bbt-table td {
+            border: 1px solid #333 !important;
+            white-space: normal !important;
+            word-break: break-word;
+            overflow: visible !important;
+            max-width: none !important;
+            text-overflow: unset !important;
+            font-size: 10.5px !important;
+            padding: 5px 6px !important;
+          }
+          .bbt-row { break-inside: avoid; page-break-inside: avoid; }
+          thead { display: table-header-group; }
         }
       `}</style>
 
@@ -371,6 +385,6 @@ function Field({ label, children, style }) {
   );
 }
 
-const thStyle = { textAlign: "left", padding: "11px 16px", fontSize: 11.5, fontWeight: 650, color: "#667085", textTransform: "uppercase", letterSpacing: 0.3, whiteSpace: "nowrap" };
-const tdStyle = { padding: "12px 16px", color: "#344054", whiteSpace: "nowrap" };
+const thStyle = { textAlign: "left", padding: "11px 16px", fontSize: 11.5, fontWeight: 650, color: "#667085", textTransform: "uppercase", letterSpacing: 0.3, whiteSpace: "nowrap", border: "1px solid #E4E7EC" };
+const tdStyle = { padding: "12px 16px", color: "#344054", whiteSpace: "nowrap", border: "1px solid #F0F2F5" };
 const inputStyle = { width: "100%", border: "1px solid #E5E7EB", borderRadius: 9, padding: "9px 11px", fontSize: 13.5, boxSizing: "border-box" };

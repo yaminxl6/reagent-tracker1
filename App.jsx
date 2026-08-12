@@ -562,6 +562,9 @@ export default function App() {
         @media print {
           .no-print { display: none !important; }
           body { background: #fff !important; }
+          .app-layout { display: block !important; }
+          .app-main-col { width: 100% !important; }
+          main { max-width: 100% !important; padding: 0 !important; }
         }
         .app-layout { display: flex; min-height: 100vh; background: #F8FAFC; font-family: 'Inter', -apple-system, sans-serif; }
         .dash-card { transition: all 0.25s ease; }
