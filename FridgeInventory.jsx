@@ -80,6 +80,32 @@ export default function FridgeInventory({ username, logActivity, initialFridge }
     setFridgePhotos(photoMap);
   }
   useEffect(() => { loadOwners(); }, []);
+
+  // Live stock status per lot number (from the reagents catalog, not the
+  // manually-typed fridge count), so a row can be flagged yellow/red even
+  // if nobody has updated this month's fridge sheet since it was used up.
+  const [reagentStatusByLot, setReagentStatusByLot] = useState({});
+  async function loadReagentStatus() {
+    const { data } = await supabase.from("reagents").select("lot_number, current_quantity, quantity_received, deleted");
+    const map = {};
+    (data || []).forEach((r) => {
+      const key = (r.lot_number || "").trim();
+      if (!key) return;
+      if (!map[key] || (map[key].deleted && !r.deleted)) map[key] = r;
+    });
+    setReagentStatusByLot(map);
+  }
+  useEffect(() => { loadReagentStatus(); }, []);
+  function rowStockStatus(r) {
+    const match = reagentStatusByLot[(r.lot_number || "").trim()];
+    if (!match) return null;
+    const received = Number(match.quantity_received);
+    const current = Number(match.current_quantity);
+    if (!(received > 0)) return null;
+    if (current <= 0) return "finished";
+    if (current < received) return "used";
+    return null;
+  }
   async function uploadFridgePhoto(fridgeName, dataUrl) {
     const { data: existing } = await supabase.from("fridge_owners").select("fridge_name").eq("fridge_name", fridgeName).maybeSingle();
     if (existing) {
@@ -346,8 +372,11 @@ export default function FridgeInventory({ username, logActivity, initialFridge }
                   <tr>
                     <td colSpan={7} style={{ textAlign: "center", fontWeight: 700, background: "#F7F9F8", border: "1px solid #C7D1CE", padding: "6px 0" }}>#{section}</td>
                   </tr>
-                  {rows.map((r) => (
-                    <tr key={r.id}>
+                  {rows.map((r) => {
+                    const status = rowStockStatus(r);
+                    const rowStyle = status === "finished" ? { background: "#FBEAE6" } : status === "used" ? { background: "#FBF3DF" } : undefined;
+                    return (
+                    <tr key={r.id} style={rowStyle}>
                       <td style={tdStyle}>
                         <ItemNameAutocomplete style={cellInputStyle} value={r.item_name} options={itemSuggestions} onChange={(v) => updateRow(r.id, "item_name", v)} />
                       </td>
@@ -374,7 +403,8 @@ export default function FridgeInventory({ username, logActivity, initialFridge }
                         <button onClick={() => deleteRow(r.id)} style={{ background: "none", border: "none", color: "#C1432B" }}><Trash2 size={13} /></button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   <tr className="no-print">
                     <td colSpan={6} style={{ border: "1px solid #C7D1CE", padding: 4 }}>
                       <button onClick={() => addRow(section)} style={{ background: "none", border: "none", color: "var(--accent-1)", fontSize: 12, fontWeight: 600 }}>+ Add row to #{section}</button>
