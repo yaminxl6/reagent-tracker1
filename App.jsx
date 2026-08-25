@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Beaker, TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, ClipboardList, KeyRound } from "lucide-react";
+import { Beaker, TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, ClipboardList, KeyRound } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Login from "./Login";
 import Settings from "./Settings";
@@ -7,7 +7,6 @@ import BarcodeScanner from "./BarcodeScanner";
 import ReceiveWizard, { YesNoRow } from "./ReceiveWizard";
 import Charts from "./Charts";
 import BloodBagTransactions from "./BloodBagTransactions";
-import ReagentImport from "./ReagentImport";
 import FridgeInventory from "./FridgeInventory";
 import SearchableSelect from "./SearchableSelect";
 import Home from "./Home";
@@ -69,7 +68,6 @@ export default function App() {
   const [tab, setTab] = useState("home");
   const [showWizard, setShowWizard] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showImport, setShowImport] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
@@ -251,46 +249,6 @@ export default function App() {
     }
     await logActivity("receive", "reagent", `${entry.name} — Lot ${entry.lotNumber}, ${entry.quantityReceived} ${entry.unit}, received by ${entry.receivedBy}${entry.fridgeName ? ` — stored in ${entry.fridgeName}` : ""}`);
     setShowWizard(false);
-    loadAll();
-  }
-
-  // Bulk import follows the same rule as the single Receive wizard now:
-  // no fridge/storage is auto-assigned. Every imported row lands in
-  // Pending Storage and gets its own receiving_records entry.
-  async function bulkReceive(rows) {
-    const results = await Promise.allSettled(rows.map(async (entry) => {
-      const { data: inserted, error: insertErr } = await supabase.from("reagents").insert({
-        name: entry.name,
-        department: entry.department,
-        item_type: entry.itemType || "Reagent",
-        device: entry.device || "",
-        fridge_name: "",
-        storage_status: "Pending Storage",
-        lot_number: entry.lotNumber,
-        unit: entry.unit || "unit",
-        quantity_received: Number(entry.quantityReceived),
-        current_quantity: Number(entry.quantityReceived),
-        expiry_date: entry.expiryDate || null,
-        date_added: entry.receivedDate,
-        added_by: entry.receivedBy,
-        low_stock_threshold: Number(entry.lowStockThreshold) || Math.ceil(Number(entry.quantityReceived) * ((config.low_stock_default_percent || 15) / 100)),
-        intact_container: true, complete_compound: true, expiration_validity: true, lot_matches_kit: true, storage_condition_ok: true,
-      }).select().single();
-      if (insertErr || !inserted) throw insertErr || new Error("insert failed");
-      await supabase.from("receiving_records").insert({
-        reagent_id: inserted.id,
-        name: entry.name, department: entry.department, device: entry.device || "",
-        lot_number: entry.lotNumber, unit: entry.unit || "unit", quantity_received: Number(entry.quantityReceived),
-        expiry_date: entry.expiryDate || null, received_date: entry.receivedDate, received_by: entry.receivedBy,
-        storage_condition: entry.fridgeName || "",
-      });
-    }));
-    const failedRows = results.filter((r) => r.status === "rejected");
-    if (failedRows.length) {
-      alert(`${failedRows.length} of ${rows.length} row(s) failed to import — please check those rows and try again. (${rows.length - failedRows.length} imported fine.)`);
-    }
-    await logActivity("bulk_import", "reagent", `Imported ${rows.length - failedRows.length} of ${rows.length} lot(s) from file — Pending Storage`);
-    setShowImport(false);
     loadAll();
   }
 
@@ -578,7 +536,6 @@ export default function App() {
           tab={tab} setTab={(t) => { setTab(t); setSidebarOpen(false); }} role={role}
           appName={config.app_name} appNameColor={config.app_name_color}
           onAdd={() => { setShowWizard(true); setSidebarOpen(false); }}
-          onImport={() => { setShowImport(true); setSidebarOpen(false); }}
           onLog={() => { setShowLog(true); setSidebarOpen(false); }}
           onLogout={logout} onEnableNotif={enableNotifications}
           onChangePassword={() => { setShowChangePassword(true); setSidebarOpen(false); }}
@@ -634,11 +591,6 @@ export default function App() {
       </div>
 
       {showWizard && <ReceiveWizard presets={presets} reagents={reagents} devices={devices} fridgeNames={fridgeNames} role={role} departments={config.departments || []} username={username} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
-      {showImport && (
-        <Modal title="Bulk import reagents" onClose={() => setShowImport(false)}>
-          <ReagentImport departments={config.departments || []} onApply={bulkReceive} />
-        </Modal>
-      )}
       {showLog && <LogConsumptionModal reagents={reagents.filter((r) => !r.deleted)} username={username} onClose={() => setShowLog(false)} onSubmit={recordConsumption} />}
       {editReagent && <EditReagentModal reagent={editReagent} onClose={() => setEditReagent(null)} onSave={saveEditedReagent} />}
       {editLog && <EditLogModal log={editLog} onClose={() => setEditLog(null)} onSave={saveEditedLog} />}
@@ -701,7 +653,7 @@ function ChangePasswordModal({ username, onClose }) {
   );
 }
 
-function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, onImport, onLog, onLogout, onEnableNotif, onChangePassword }) {
+function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, onLog, onLogout, onEnableNotif, onChangePassword }) {
   const isAdmin = ["admin","super","owner"].includes(role);
   const isSuper = ["super","owner"].includes(role);
   return (
@@ -744,7 +696,6 @@ function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, o
 
         <button onClick={onAdd} style={{ background: "var(--accent-1)", border: "none", color: "#fff", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, margin: "3px 4px", boxShadow: "0 1px 2px rgba(0,0,0,0.08)" }}><Plus size={14} /> Receive stock</button>
         <button onClick={onLog} style={{ background: "#fff", border: "1px solid #E1E5EA", color: "#3B4450", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, margin: "3px 4px" }}><TrendingDown size={14} /> Log use</button>
-        <button onClick={onImport} style={{ background: "#fff", border: "1px solid #E1E5EA", color: "#3B4450", borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, margin: "3px 4px" }}><Upload size={14} /> Bulk import</button>
       </nav>
 
       <div style={{ padding: "12px 12px", borderTop: "1px solid #EDEFF2", display: "flex", gap: 8 }}>
