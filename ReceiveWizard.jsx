@@ -20,6 +20,18 @@ export default function ReceiveWizard({ presets, reagents, devices, fridgeNames,
   const [step, setStep] = useState(1);
   const [showScanner, setShowScanner] = useState(false);
 
+  // Fridge owners, so the location picker can show whose fridge each one
+  // is (e.g. "Lab0007 — Majid ALMUTAIRI") instead of a bare code.
+  const [fridgeOwners, setFridgeOwners] = useState({});
+  React.useEffect(() => {
+    supabase.from("fridge_owners").select("*").then(({ data }) => {
+      const map = {};
+      (data || []).forEach((o) => { if (o.employee_name) map[o.fridge_name] = o.employee_name; });
+      setFridgeOwners(map);
+    });
+  }, []);
+  const fridgeOptions = (fridgeNames || []).map((f) => (fridgeOwners[f] ? `${f} — ${fridgeOwners[f]}` : f));
+
   const [form, setForm] = useState({
     name: "", department: departments[0] || "", unit: "kit", itemType: "Reagent", device: "", fridgeName: "",
     lotNumber: "", boxesReceived: "1", kitsPerBox: "", quantityReceived: "", volumeMl: "", expiryDate: "",
@@ -73,7 +85,10 @@ export default function ReceiveWizard({ presets, reagents, devices, fridgeNames,
 
   function handleFridgeChange(value) {
     setFridgeTouched(true);
-    setForm((f) => ({ ...f, fridgeName: value }));
+    // Strip the " — owner name" suffix shown in the picker list — only the
+    // plain fridge name is stored.
+    const plain = value.split(" — ")[0];
+    setForm((f) => ({ ...f, fridgeName: plain }));
   }
 
   function toggle(key, value) {
@@ -147,10 +162,13 @@ export default function ReceiveWizard({ presets, reagents, devices, fridgeNames,
               <SearchableSelect
                 value={form.fridgeName}
                 onChange={handleFridgeChange}
-                options={fridgeNames || []}
+                options={fridgeOptions}
                 placeholder="e.g. R0008, or Room Temperature"
                 style={{ marginTop: 4 }}
               />
+              {form.fridgeName && fridgeOwners[form.fridgeName] && (
+                <div style={{ fontSize: 11.5, color: "#7B8E8A", marginTop: 3 }}>Owner: {fridgeOwners[form.fridgeName]}</div>
+              )}
             </label>
             <label style={labelStyle}>Type
               <select style={inputStyle} value={form.itemType} onChange={set("itemType")}>
