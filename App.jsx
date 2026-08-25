@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Beaker, TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, Package, ClipboardList, KeyRound } from "lucide-react";
+import { Beaker, TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Upload, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, ClipboardList, KeyRound } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Login from "./Login";
 import Settings from "./Settings";
@@ -15,7 +15,6 @@ import DeviceUsage from "./DeviceUsage";
 import Suppliers from "./Suppliers";
 import Users from "./Users";
 import OrderPlan from "./OrderPlan";
-import StorageAssignment from "./StorageAssignment";
 
 const DEPT_PALETTE = ["#0F7173", "#B5473A", "#8A5A2B", "#5A6ACF", "#2F8F5B", "#B8860B", "#7A4FA3", "#C1432B"];
 // Your lab's fridges, always offered on Receive even before any data exists
@@ -198,10 +197,9 @@ export default function App() {
     };
   }, [role]);
 
-  // Receiving no longer places the reagent into any fridge/storage location
-  // automatically. It only lands in the Laboratory Inventory with status
-  // "Pending Storage" until an authorized user assigns it a location on the
-  // Storage Assignment page (see assignStorage below).
+  // Receiving stores the reagent straight into the fridge/location picked
+  // in the wizard — no separate Storage Assignment step. It also drops a
+  // row into that month's fridge count sheet, same as an assignment used to.
   async function addReagent(entry) {
     const dup = reagents.find((r) => !r.deleted && r.name === entry.name && r.lot_number === entry.lotNumber);
     if (dup && !confirm(`Lot ${entry.lotNumber} already exists for ${entry.name}. Add it again anyway?`)) return;
@@ -210,8 +208,10 @@ export default function App() {
       department: entry.department,
       item_type: entry.itemType,
       device: entry.device || "",
-      fridge_name: "",
-      storage_status: "Pending Storage",
+      fridge_name: entry.fridgeName || "",
+      storage_status: "Stored",
+      assigned_by: entry.receivedBy,
+      assigned_at: new Date().toISOString(),
       lot_number: entry.lotNumber,
       unit: entry.unit,
       quantity_received: entry.quantityReceived,
@@ -238,37 +238,19 @@ export default function App() {
       expiry_date: entry.expiryDate, received_date: entry.receivedDate, received_by: entry.receivedBy,
       storage_condition: entry.fridgeName || "",
     });
-    await logActivity("receive", "reagent", `${entry.name} — Lot ${entry.lotNumber}, ${entry.quantityReceived} ${entry.unit}, received by ${entry.receivedBy} — Pending Storage`);
-    setShowWizard(false);
-    loadAll();
-  }
-
-  // Storage Assignment: authorized users only. Moves one or more
-  // Pending-Storage reagents into a chosen location and flips their status
-  // to "Stored". Existing already-stored reagents are never touched by this.
-  async function assignStorage(reagentIds, location) {
-    if (!["admin", "super", "owner"].includes(role)) return;
-    const targets = reagents.filter((r) => reagentIds.includes(r.id));
-    for (const r of targets) {
-      await supabase.from("reagents").update({
-        fridge_name: location,
-        storage_status: "Stored",
-        assigned_by: username,
-        assigned_at: new Date().toISOString(),
-      }).eq("id", r.id);
-      await logActivity("assign_storage", "reagent", `${r.name} — Lot ${r.lot_number} assigned to ${location} by ${username}`);
-      if (location && location !== ROOM_TEMP) {
-        const month = todayISO().slice(0, 7);
-        const { data: existingRows } = await supabase.from("fridge_inventory").select("row_order").eq("month", month).eq("refrigerator_name", location);
-        const maxOrder = (existingRows || []).reduce((m, x) => Math.max(m, x.row_order || 0), 0);
-        await supabase.from("fridge_inventory").insert({
-          month, refrigerator_name: location, counted_by: username || "",
-          added_by: username || "", device_group: r.device || "",
-          item_name: r.name, lot_number: r.lot_number, quantity: String(r.current_quantity),
-          expiry_date: r.expiry_date, row_order: maxOrder + 1,
-        });
-      }
+    if (entry.fridgeName && entry.fridgeName !== ROOM_TEMP) {
+      const month = entry.receivedDate.slice(0, 7);
+      const { data: existingRows } = await supabase.from("fridge_inventory").select("row_order").eq("month", month).eq("refrigerator_name", entry.fridgeName);
+      const maxOrder = (existingRows || []).reduce((m, x) => Math.max(m, x.row_order || 0), 0);
+      await supabase.from("fridge_inventory").insert({
+        month, refrigerator_name: entry.fridgeName, counted_by: entry.receivedBy || "",
+        added_by: entry.receivedBy || "", device_group: entry.device || "",
+        item_name: entry.name, lot_number: entry.lotNumber, quantity: String(entry.quantityReceived),
+        expiry_date: entry.expiryDate, row_order: maxOrder + 1,
+      });
     }
+    await logActivity("receive", "reagent", `${entry.name} — Lot ${entry.lotNumber}, ${entry.quantityReceived} ${entry.unit}, received by ${entry.receivedBy}${entry.fridgeName ? ` — stored in ${entry.fridgeName}` : ""}`);
+    setShowWizard(false);
     loadAll();
   }
 
@@ -644,7 +626,6 @@ export default function App() {
         {tab === "reports" && <Reports reagents={reagents} logs={logs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
         {tab === "settings" && (["admin","super","owner"].includes(role)) && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} fridgeNames={fridgeNames} reagents={reagents} logs={logs} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
         {tab === "fridges" && <FridgeInventory username={username} logActivity={logActivity} />}
-        {tab === "storageassignment" && <StorageAssignment reagents={reagents} role={role} fridgeNames={fridgeNames} onAssign={assignStorage} />}
         {tab === "charts" && (["admin","super","owner"].includes(role)) && <Charts reagents={reagents} logs={logs} />}
         {tab === "bloodbank" && <BloodBagTransactions username={username} role={role} departments={config.departments || []} />}
         {tab === "deletions" && ["super","owner"].includes(role) && <DeletionsLog activityLog={activityLog} onClear={clearActivityLog} />}
@@ -741,7 +722,6 @@ function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, o
         <SideGroupLabel>Inventory</SideGroupLabel>
         <SideBtn active={tab === "stock" || tab === "detail"} onClick={() => setTab("stock")} icon={<LayoutGrid size={16} />} label="Stock" />
         <SideBtn active={tab === "fridges"} onClick={() => setTab("fridges")} icon={<Refrigerator size={16} />} label="Fridges" />
-        <SideBtn active={tab === "storageassignment"} onClick={() => setTab("storageassignment")} icon={<Package size={16} />} label="Storage Assignment" />
         <SideBtn active={tab === "devices"} onClick={() => setTab("devices")} icon={<Cpu size={16} />} label="Devices" />
         <SideBtn active={tab === "orderplan"} onClick={() => setTab("orderplan")} icon={<ClipboardList size={16} />} label="Order Plan" />
 
