@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Plus, X, Search, Lock, Trash2, Printer } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { bloodBagCall, getSessionToken } from "./authClient";
 import SearchableSelect from "./SearchableSelect";
 
 const ACTIONS = ["Issued", "Expired", "Discarded", "Returned to Blood Bank"];
@@ -31,8 +32,12 @@ export default function BloodBagTransactions({ username, role, departments = [] 
   const [editing, setEditing] = useState(null); // row being edited by an admin
 
   async function loadAll() {
-    const { data } = await supabase.from("blood_bag_transactions").select("*").order("created_at", { ascending: false });
-    setRows(data || []);
+    try {
+      const res = await bloodBagCall("list", { token: getSessionToken() });
+      setRows(res.rows || []);
+    } catch {
+      setRows([]);
+    }
   }
   async function loadBagOptions() {
     const { data } = await supabase.from("fridge_inventory").select("lot_number, blood_type, refrigerator_name, expiry_date").in("refrigerator_name", ["FFP", "PRBCs"]);
@@ -61,11 +66,11 @@ export default function BloodBagTransactions({ username, role, departments = [] 
       txn_date: form.date, performed_by: form.performedBy, note: form.note || "",
       locked: true,
     };
-    const { error } = form.id
-      ? await supabase.from("blood_bag_transactions").update(payload).eq("id", form.id)
-      : await supabase.from("blood_bag_transactions").insert(payload);
-    if (error) {
-      alert(`Could not save this record: ${error.message}`);
+    try {
+      if (form.id) await bloodBagCall("update", { token: getSessionToken(), id: form.id, record: payload });
+      else await bloodBagCall("insert", { token: getSessionToken(), record: payload });
+    } catch (err) {
+      alert(`Could not save this record: ${err.message}`);
       return;
     }
     setShowForm(false);
@@ -76,9 +81,10 @@ export default function BloodBagTransactions({ username, role, departments = [] 
   async function deleteRecord(row) {
     if (!isAdmin) return;
     if (!confirm(`Permanently delete this transaction for bag ${row.bag_number}? This cannot be undone.`)) return;
-    const { error } = await supabase.from("blood_bag_transactions").delete().eq("id", row.id);
-    if (error) {
-      alert(`Could not delete this record: ${error.message}`);
+    try {
+      await bloodBagCall("delete", { token: getSessionToken(), id: row.id });
+    } catch (err) {
+      alert(`Could not delete this record: ${err.message}`);
       return;
     }
     loadAll();

@@ -1,53 +1,42 @@
 import React, { useState } from "react";
 import { Beaker, Lock, KeyRound } from "lucide-react";
-import { supabase } from "./supabaseClient";
+import { authCall } from "./authClient";
 
 const inputStyle = { width: "100%", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 11px", fontSize: 14, marginTop: 4, boxSizing: "border-box" };
 
-export default function Login({ config, staffAccounts, onLogin }) {
+export default function Login({ config, onLogin }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [pendingAccount, setPendingAccount] = useState(null); // staff account that must change password first
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingSetup, setPendingSetup] = useState(null); // { setupToken, name } — must set a new password first
 
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault();
     setError("");
-    if (username === config.owner_username && password === config.owner_password) {
-      onLogin("owner", username);
-      return;
-    }
-    if (username === config.super_username && password === config.super_password) {
-      onLogin("super", username);
-      return;
-    }
-    if (username === config.admin_username && password === config.admin_password) {
-      onLogin("admin", username);
-      return;
-    }
-    if (username === config.lab_username && password === config.lab_password) {
-      onLogin("staff", username);
-      return;
-    }
-    const staffMatch = (staffAccounts || []).find((s) => s.username === username && s.password === password);
-    if (staffMatch) {
-      if (staffMatch.must_change_password) {
-        setPendingAccount(staffMatch);
+    setSubmitting(true);
+    try {
+      const res = await authCall("login", { username, password });
+      if (res.mustChangePassword) {
+        setPendingSetup({ setupToken: res.setupToken, name: res.name });
         return;
       }
-      onLogin(staffMatch.role || "staff", staffMatch.display_name || username);
-      return;
+      onLogin(res.role, res.name, res.token);
+    } catch (err) {
+      setError(err.message || "Incorrect username or password.");
+    } finally {
+      setSubmitting(false);
     }
-    setError("Incorrect username or password.");
   }
 
-  if (pendingAccount) {
+  if (pendingSetup) {
     return (
       <ChangePasswordScreen
-        account={pendingAccount}
+        setupToken={pendingSetup.setupToken}
+        name={pendingSetup.name}
         appName={config.app_name}
         appNameColor={config.app_name_color}
-        onDone={(role, name) => onLogin(role, name)}
+        onDone={(role, name, token) => onLogin(role, name, token)}
       />
     );
   }
@@ -75,8 +64,8 @@ export default function Login({ config, staffAccounts, onLogin }) {
 
         {error && <div style={{ color: "#C1432B", fontSize: 12.5, marginTop: 10 }}>{error}</div>}
 
-        <button type="submit" style={{ marginTop: 18, width: "100%", background: "#0F7173", color: "#fff", border: "none", borderRadius: 8, padding: "11px", fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-          <Lock size={14} /> Sign in
+        <button type="submit" disabled={submitting} style={{ marginTop: 18, width: "100%", background: submitting ? "#8FA39E" : "#0F7173", color: "#fff", border: "none", borderRadius: 8, padding: "11px", fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <Lock size={14} /> {submitting ? "Signing in…" : "Sign in"}
         </button>
       </form>
     </div>
@@ -86,7 +75,7 @@ export default function Login({ config, staffAccounts, onLogin }) {
 // Shown right after a correct first-time login (must_change_password is
 // true on the account) — blocks entry into the app until a new password
 // is set. The account's username itself never changes, only the password.
-function ChangePasswordScreen({ account, appName, appNameColor, onDone }) {
+function ChangePasswordScreen({ setupToken, name, appName, appNameColor, onDone }) {
   const [pw1, setPw1] = useState("");
   const [pw2, setPw2] = useState("");
   const [error, setError] = useState("");
@@ -103,21 +92,15 @@ function ChangePasswordScreen({ account, appName, appNameColor, onDone }) {
       setError("Passwords don't match.");
       return;
     }
-    if (pw1 === account.username) {
-      setError("Pick something other than your employee number.");
-      return;
-    }
     setSaving(true);
-    const { error: dbErr } = await supabase
-      .from("staff_accounts")
-      .update({ password: pw1, must_change_password: false })
-      .eq("id", account.id);
-    setSaving(false);
-    if (dbErr) {
-      setError("Could not save the new password. Try again.");
-      return;
+    try {
+      const res = await authCall("setInitialPassword", { setupToken, newPassword: pw1 });
+      onDone(res.role, res.name, res.token);
+    } catch (err) {
+      setError(err.message || "Could not save the new password. Try again.");
+    } finally {
+      setSaving(false);
     }
-    onDone(account.role || "staff", account.display_name || account.username);
   }
 
   return (
@@ -134,7 +117,7 @@ function ChangePasswordScreen({ account, appName, appNameColor, onDone }) {
           </div>
         </div>
         <div style={{ fontSize: 13, color: "#516361", marginBottom: 18, background: "#EAF6F4", border: "1px solid #C6E8E3", borderRadius: 8, padding: "10px 12px" }}>
-          Welcome, <b>{account.display_name || account.username}</b>. For security, set your own password before continuing — you won't use your employee number again after this.
+          Welcome, <b>{name}</b>. For security, set your own password before continuing — you won't use your employee number again after this.
         </div>
 
         <label style={{ fontSize: 12.5, fontWeight: 600, color: "#516361" }}>New password
