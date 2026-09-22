@@ -241,7 +241,14 @@ export default function FridgeInventory({ username, logActivity, initialFridge }
     });
     const toUpdate = currentRows.filter((r) => !isTempId(r.id)).map(withQuantity);
 
-    if (toInsert.length) await supabase.from("fridge_inventory").insert(toInsert);
+    let insertFailed = false;
+    if (toInsert.length) {
+      const { error: insertError } = await supabase.from("fridge_inventory").insert(toInsert);
+      if (insertError) {
+        insertFailed = true;
+        alert(`Could not save ${toInsert.length} new row(s): ${insertError.message}`);
+      }
+    }
 
     // Each row is saved independently — a bad value in one row (e.g. an
     // empty expiry date sent as "" instead of null, which Postgres
@@ -265,7 +272,7 @@ export default function FridgeInventory({ username, logActivity, initialFridge }
 
     await logActivity?.("fridge_count", "fridge", `${refrigeratorName} — ${month}: ${toInsert.length} new row(s), ${toUpdate.length} updated`);
     await loadAll();
-    setSaveMsg("Saved ✓");
+    setSaveMsg(insertFailed || failed.length ? "Saved with errors — see alert" : "Saved ✓");
     setTimeout(() => setSaveMsg(""), 2500);
     savingRef.current = false;
   }
