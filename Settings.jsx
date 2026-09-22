@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Trash2, Plus, Save, Eye, EyeOff, Pencil, ChevronDown } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { authCall, getSessionToken } from "./authClient";
 
 const THEME_PRESETS = [
   { name: "Ocean Teal", colors: { accent1: "#0F9B8E", accent2: "#3E6ACF", headerStart: "#123C4A", headerEnd: "#1B2B2E" } },
@@ -50,14 +51,10 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   const [staffMsg, setStaffMsg] = useState("");
   const [showPasswords, setShowPasswords] = useState(false);
   const [creds, setCreds] = useState({
-    lab_username: config.lab_username,
-    lab_password: config.lab_password,
-    admin_username: config.admin_username,
-    admin_password: config.admin_password,
-    super_username: config.super_username,
-    super_password: config.super_password,
-    owner_username: config.owner_username,
-    owner_password: config.owner_password,
+    lab_username: "", lab_password: "",
+    admin_username: "", admin_password: "",
+    super_username: "", super_password: "",
+    owner_username: "", owner_password: "",
     low_stock_default_percent: config.low_stock_default_percent,
     expiry_warning_days: config.expiry_warning_days ?? 30,
     critical_expiry_days: config.critical_expiry_days ?? 3,
@@ -65,6 +62,14 @@ export default function Settings({ config, presets, role, staffAccounts, devices
     app_name: config.app_name || "Reagent Log",
     app_name_color: config.app_name_color || "#1B2328",
   });
+  // The owner/super/admin/lab login fields aren't in `config` anymore (that
+  // table's credential columns are locked to the `auth` edge function) —
+  // fetch whichever of them this role is allowed to see.
+  useEffect(() => {
+    authCall("getCredentials", { token: getSessionToken() })
+      .then((res) => setCreds((c) => ({ ...c, ...res.credentials })))
+      .catch(() => {});
+  }, []);
   const [theme, setTheme] = useState(config.theme_colors || { accent1: "#2F6FED", accent2: "#0EA5A5", headerStart: "#2F6FED", headerEnd: "#0EA5A5" });
   const [themeMsg, setThemeMsg] = useState("");
   const [msg, setMsg] = useState("");
@@ -333,7 +338,12 @@ export default function Settings({ config, presets, role, staffAccounts, devices
 
   async function addStaffAccount() {
     if (!newStaff.username || !newStaff.password || !newStaff.display_name) return;
-    const { error } = await supabase.from("staff_accounts").insert(newStaff);
+    let error = null;
+    try {
+      await authCall("addStaff", { token: getSessionToken(), ...newStaff });
+    } catch (err) {
+      error = err;
+    }
     setStaffMsg(error ? "That username may already exist." : "Account created.");
     if (!error) await logActivity?.("staff_add", "staff", `${newStaff.display_name} (${newStaff.username})`);
     setNewStaff({ username: "", password: "", display_name: "" });
@@ -343,13 +353,13 @@ export default function Settings({ config, presets, role, staffAccounts, devices
 
   async function removeStaffAccount(id, uname) {
     if (!confirm("Remove this employee's account? They will no longer be able to sign in.")) return;
-    await supabase.from("staff_accounts").delete().eq("id", id);
+    await authCall("removeStaff", { token: getSessionToken(), id });
     await logActivity?.("staff_remove", "staff", uname);
     reload();
   }
 
   async function updateStaffRole(id, uname, newRole) {
-    await supabase.from("staff_accounts").update({ role: newRole }).eq("id", id);
+    await authCall("updateStaffRole", { token: getSessionToken(), id, role: newRole });
     await logActivity?.("staff_role_change", "staff", `${uname} → ${newRole}`);
     reload();
   }
@@ -386,7 +396,20 @@ export default function Settings({ config, presets, role, staffAccounts, devices
   }
 
   async function saveCreds() {
-    const { error } = await supabase.from("app_config").update(creds).eq("id", 1);
+    const {
+      lab_username, lab_password, admin_username, admin_password,
+      super_username, super_password, owner_username, owner_password,
+      ...publicFields
+    } = creds;
+    let error = null;
+    try {
+      await Promise.all([
+        authCall("updateCredentials", { token: getSessionToken(), lab_username, lab_password, admin_username, admin_password, super_username, super_password, owner_username, owner_password }),
+        supabase.from("app_config").update(publicFields).eq("id", 1),
+      ]);
+    } catch (err) {
+      error = err;
+    }
     setMsg(error ? "Could not save." : "Saved.");
     if (!error) await logActivity?.("settings_change", "config", "Login credentials or defaults updated");
     reload();

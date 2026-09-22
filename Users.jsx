@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Users as UsersIcon, Plus, Trash2 } from "lucide-react";
-import { supabase } from "./supabaseClient";
+import { authCall, getSessionToken } from "./authClient";
 
 const inputStyle = { width: "100%", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 11px", fontSize: 14, marginTop: 4, boxSizing: "border-box" };
 const labelStyle = { fontSize: 12.5, fontWeight: 600, color: "#516361" };
@@ -12,7 +12,12 @@ export default function Users({ staffAccounts, role, logActivity, reload }) {
 
   async function addStaffAccount() {
     if (!newStaff.username || !newStaff.password || !newStaff.display_name) return;
-    const { error } = await supabase.from("staff_accounts").insert(newStaff);
+    let error = null;
+    try {
+      await authCall("addStaff", { token: getSessionToken(), ...newStaff });
+    } catch (err) {
+      error = err;
+    }
     setMsg(error ? "That username may already exist." : "Account created.");
     if (!error) await logActivity?.("staff_add", "staff", `${newStaff.display_name} (${newStaff.username})`);
     setNewStaff({ display_name: "", username: "", password: "" });
@@ -22,13 +27,13 @@ export default function Users({ staffAccounts, role, logActivity, reload }) {
 
   async function removeStaffAccount(id, uname) {
     if (!confirm("Remove this employee's account? They will no longer be able to sign in.")) return;
-    await supabase.from("staff_accounts").delete().eq("id", id);
+    await authCall("removeStaff", { token: getSessionToken(), id });
     await logActivity?.("staff_remove", "staff", uname);
     reload();
   }
 
   async function updateStaffRole(id, uname, newRole) {
-    await supabase.from("staff_accounts").update({ role: newRole }).eq("id", id);
+    await authCall("updateStaffRole", { token: getSessionToken(), id, role: newRole });
     await logActivity?.("staff_role_change", "staff", `${uname} → ${newRole}`);
     reload();
   }

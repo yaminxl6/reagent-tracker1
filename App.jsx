@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Beaker, TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, ClipboardList, KeyRound } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { authCall, getSessionToken, setSessionToken } from "./authClient";
 import Login from "./Login";
 import Settings from "./Settings";
 import BarcodeScanner from "./BarcodeScanner";
@@ -76,11 +77,18 @@ export default function App() {
   const [error, setError] = useState("");
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
+  // The owner/super/admin/lab login columns on app_config are locked down
+  // (no anon access) — only the `auth` edge function can read or write
+  // them. Every other read of this table, including this one, sticks to
+  // the public-safe columns explicitly so a bare select("*") never trips
+  // over a column this role has no grant on.
+  const PUBLIC_CONFIG_COLUMNS = "id, low_stock_default_percent, departments, expiry_warning_days, theme_colors, app_name, app_name_color, critical_expiry_days, archive_grace_days";
+
   async function ensureConfig() {
-    let { data } = await supabase.from("app_config").select("*").eq("id", 1).maybeSingle();
+    let { data } = await supabase.from("app_config").select(PUBLIC_CONFIG_COLUMNS).eq("id", 1).maybeSingle();
     if (!data) {
       await supabase.from("app_config").insert({ id: 1 });
-      const r = await supabase.from("app_config").select("*").eq("id", 1).maybeSingle();
+      const r = await supabase.from("app_config").select(PUBLIC_CONFIG_COLUMNS).eq("id", 1).maybeSingle();
       data = r.data;
     }
     setConfig(data);
@@ -121,9 +129,8 @@ export default function App() {
       setLogs([]);
       return;
     }
-    const [{ data: p }, { data: s }, { data: a }, { data: dv }, supRes, fridgeRes] = await Promise.all([
+    const [{ data: p }, { data: a }, { data: dv }, supRes, fridgeRes] = await Promise.all([
       supabase.from("reagent_presets").select("*").order("name"),
-      supabase.from("staff_accounts").select("*").order("username"),
       supabase.from("audit_log").select("*").order("performed_at", { ascending: false }),
       supabase.from("devices").select("*").order("name"),
       supabase.from("suppliers").select("*").order("name"),
@@ -132,7 +139,6 @@ export default function App() {
     setReagents(r || []);
     setLogs(l || []);
     setPresets(p || []);
-    setStaffAccounts(s || []);
     setActivityLog(a || []);
     setDevices(dv || []);
     setSuppliers(supRes?.data || []);
@@ -151,15 +157,37 @@ export default function App() {
     loadAll();
   }, []);
 
-  function handleLogin(newRole, newUsername) {
+  // staff_accounts is locked down at the database level now — it only
+  // loads through the `auth` edge function, and only for roles allowed to
+  // manage employees, once a session token actually exists.
+  const MANAGE_STAFF_ROLES = ["admin", "super", "owner"];
+  async function loadStaffAccounts() {
+    if (!MANAGE_STAFF_ROLES.includes(role) || !getSessionToken()) {
+      setStaffAccounts([]);
+      return;
+    }
+    try {
+      const res = await authCall("listStaff", { token: getSessionToken() });
+      setStaffAccounts(res.staff || []);
+    } catch {
+      setStaffAccounts([]);
+    }
+  }
+  useEffect(() => {
+    loadStaffAccounts();
+  }, [role]);
+
+  function handleLogin(newRole, newUsername, token) {
     localStorage.setItem("reagent_role", newRole);
     localStorage.setItem("reagent_username", newUsername);
+    setSessionToken(token);
     setRole(newRole);
     setUsername(newUsername);
   }
   function logout() {
     localStorage.removeItem("reagent_role");
     localStorage.removeItem("reagent_username");
+    setSessionToken(null);
     setRole(null);
     setUsername("");
   }
@@ -479,7 +507,7 @@ export default function App() {
   if (!config || reagents === null || logs === null) {
     return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "IBM Plex Mono, monospace", color: "#4A5A5C" }}>Loading…</div>;
   }
-  if (!role) return <Login config={config} staffAccounts={staffAccounts} onLogin={handleLogin} />;
+  if (!role) return <Login config={config} onLogin={handleLogin} />;
 
   return (
     <div style={{ minHeight: "100vh", background: "#F0F3F2", fontFamily: "'IBM Plex Sans', sans-serif", color: "#1B2B2E" }}>
@@ -568,7 +596,7 @@ export default function App() {
         {tab === "devices" && <DeviceUsage />}
         {tab === "orderplan" && <OrderPlan reagents={reagents} devices={devices} logActivity={logActivity} />}
         {tab === "suppliers" && (["admin","super","owner"].includes(role)) && <Suppliers suppliers={suppliers} reload={loadAll} logActivity={logActivity} canEdit={["admin","super","owner"].includes(role)} />}
-        {tab === "users" && (["admin","super","owner"].includes(role)) && <Users staffAccounts={staffAccounts} role={role} logActivity={logActivity} reload={loadAll} />}
+        {tab === "users" && (["admin","super","owner"].includes(role)) && <Users staffAccounts={staffAccounts} role={role} logActivity={logActivity} reload={loadStaffAccounts} />}
         {tab === "detail" && selectedGroup && (
           <DetailView
             group={groups.find((g) => g.name === selectedGroup.name) || selectedGroup}
@@ -581,7 +609,7 @@ export default function App() {
           />
         )}
         {tab === "reports" && <Reports reagents={reagents} logs={logs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
-        {tab === "settings" && (["admin","super","owner"].includes(role)) && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} fridgeNames={fridgeNames} reagents={reagents} logs={logs} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); }} />}
+        {tab === "settings" && (["admin","super","owner"].includes(role)) && <Settings config={config} presets={presets} role={role} staffAccounts={staffAccounts} devices={devices} fridgeNames={fridgeNames} reagents={reagents} logs={logs} logActivity={logActivity} reload={() => { ensureConfig(); loadAll(); loadStaffAccounts(); }} />}
         {tab === "fridges" && <FridgeInventory username={username} logActivity={logActivity} />}
         {tab === "charts" && (["admin","super","owner"].includes(role)) && <Charts reagents={reagents} logs={logs} />}
         {tab === "bloodbank" && <BloodBagTransactions username={username} role={role} departments={config.departments || []} />}
@@ -613,20 +641,14 @@ function ChangePasswordModal({ username, onClose }) {
     if (pw1.length < 4) { setError("New password must be at least 4 characters."); return; }
     if (pw1 !== pw2) { setError("New passwords don't match."); return; }
     setSaving(true);
-    const { data: acct } = await supabase.from("staff_accounts").select("*").eq("display_name", username).maybeSingle();
-    if (!acct) {
-      setError("Couldn't find your individual account — ask an admin to set one up for you first.");
+    try {
+      await authCall("changeOwnPassword", { token: getSessionToken(), currentPassword: current, newPassword: pw1 });
+      setDone(true);
+    } catch (err) {
+      setError(err.message || "Could not change your password.");
+    } finally {
       setSaving(false);
-      return;
     }
-    if (acct.password !== current) {
-      setError("Current password is incorrect.");
-      setSaving(false);
-      return;
-    }
-    await supabase.from("staff_accounts").update({ password: pw1, must_change_password: false }).eq("id", acct.id);
-    setSaving(false);
-    setDone(true);
   }
 
   return (
