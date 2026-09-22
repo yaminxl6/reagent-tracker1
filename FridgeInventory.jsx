@@ -543,21 +543,48 @@ function FridgePicker({ fridgeNames, all, month, owners, fridgePhotos, onUploadP
 function ItemNameAutocomplete({ value, options, onChange, style }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
-  const q = (value || "").trim().toLowerCase();
+  const composingRef = useRef(false);
+
+  // A local draft, not the `value` prop, drives the input. On mobile
+  // keyboards (Arabic ones especially) typing goes through an IME
+  // composition session — the browser holds the in-progress text itself
+  // until a word boundary commits it. Every keystroke here triggers a
+  // parent re-render (setAll → the whole sheet re-renders), and if that
+  // re-render forces the DOM value from a lagging `value` prop while a
+  // composition is active, the browser discards the composed text — it
+  // looks like the field "suddenly clears". Buffering locally and holding
+  // off on onChange until composition ends avoids that clobber.
+  const [draft, setDraft] = useState(value || "");
+  useEffect(() => {
+    if (!composingRef.current) setDraft(value || "");
+  }, [value]);
+
+  const q = draft.trim().toLowerCase();
   const matches = q ? options.filter((o) => o.toLowerCase().includes(q)).slice(0, 8) : [];
 
   useEffect(() => {
     function onOutside(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); }
     document.addEventListener("mousedown", onOutside);
-    return () => document.removeEventListener("mousedown", onOutside);
+    document.addEventListener("touchstart", onOutside);
+    return () => {
+      document.removeEventListener("mousedown", onOutside);
+      document.removeEventListener("touchstart", onOutside);
+    };
   }, []);
+
+  function commit(v) {
+    setDraft(v);
+    onChange(v);
+  }
 
   return (
     <div ref={wrapRef} style={{ position: "relative" }}>
       <input
         style={style}
-        value={value}
-        onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+        value={draft}
+        onChange={(e) => { setDraft(e.target.value); if (!composingRef.current) onChange(e.target.value); setOpen(true); }}
+        onCompositionStart={() => { composingRef.current = true; }}
+        onCompositionEnd={(e) => { composingRef.current = false; commit(e.target.value); }}
         onFocus={() => setOpen(true)}
       />
       {open && matches.length > 0 && (
@@ -565,7 +592,7 @@ function ItemNameAutocomplete({ value, options, onChange, style }) {
           {matches.map((m) => (
             <div
               key={m}
-              onMouseDown={(e) => { e.preventDefault(); onChange(m); setOpen(false); }}
+              onMouseDown={(e) => { e.preventDefault(); commit(m); setOpen(false); }}
               style={{ padding: "6px 10px", fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "#F0F3F2")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
