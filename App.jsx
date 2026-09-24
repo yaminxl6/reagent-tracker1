@@ -6,6 +6,7 @@ import Login from "./Login";
 import Settings from "./Settings";
 import BarcodeScanner from "./BarcodeScanner";
 import ReceiveWizard, { YesNoRow } from "./ReceiveWizard";
+import BarcodeLabel from "./BarcodeLabel";
 import Charts from "./Charts";
 import BloodBagTransactions from "./BloodBagTransactions";
 import FridgeInventory from "./FridgeInventory";
@@ -68,6 +69,7 @@ export default function App() {
   const [activityLog, setActivityLog] = useState([]);
   const [tab, setTab] = useState("home");
   const [showWizard, setShowWizard] = useState(false);
+  const [justReceived, setJustReceived] = useState(null); // reagent row just added — offer to print its barcode
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -277,6 +279,7 @@ export default function App() {
     }
     await logActivity("receive", "reagent", `${entry.name} — Lot ${entry.lotNumber}, ${entry.quantityReceived} ${entry.unit}, received by ${entry.receivedBy}${entry.fridgeName ? ` — stored in ${entry.fridgeName}` : ""}`);
     setShowWizard(false);
+    setJustReceived(inserted);
     loadAll();
   }
 
@@ -619,6 +622,7 @@ export default function App() {
       </div>
 
       {showWizard && <ReceiveWizard presets={presets} reagents={reagents} devices={devices} fridgeNames={fridgeNames} role={role} departments={config.departments || []} username={username} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
+      {justReceived && <BarcodeLabel reagent={justReceived} onClose={() => setJustReceived(null)} />}
       {showLog && <LogConsumptionModal reagents={reagents.filter((r) => !r.deleted)} username={username} onClose={() => setShowLog(false)} onSubmit={recordConsumption} />}
       {editReagent && <EditReagentModal reagent={editReagent} onClose={() => setEditReagent(null)} onSave={saveEditedReagent} />}
       {editLog && <EditLogModal log={editLog} onClose={() => setEditLog(null)} onSave={saveEditedLog} />}
@@ -1417,6 +1421,18 @@ function LogConsumptionModal({ reagents, username, onClose, onSubmit }) {
   }
 
   function handleScan(text) {
+    // A printed label (from BarcodeLabel) encodes the lot's own id, which
+    // pins the exact lot — that beats FEFO, since the person scanning is
+    // holding that specific container. A manufacturer barcode only ever
+    // gives a lot number, which just picks the item name and leaves FEFO
+    // to suggest which lot to use.
+    const byId = reagents.find((r) => r.id === text);
+    if (byId) {
+      setName(byId.name);
+      setSelectedLotId(byId.id);
+      setShowScanner(false);
+      return;
+    }
     const match = reagents.find((r) => r.lot_number === text);
     if (match) setName(match.name);
     setShowScanner(false);
