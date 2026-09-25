@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, ClipboardList, KeyRound } from "lucide-react";
+import { TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, ClipboardList, KeyRound, Sparkles } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import logo from "./logo.jpg";
 import { authCall, getSessionToken, setSessionToken } from "./authClient";
@@ -56,6 +56,32 @@ const STATUS_META = {
   green: { label: "Stable", color: "#2F6B4F", bg: "#E8F2EC" },
 };
 
+// A brief animated greeting shown right after a fresh login (not on every
+// reload — App only sets showWelcome=true from handleLogin itself). Closes
+// itself after a few seconds, or immediately on click.
+function WelcomeToast({ username, onDone }) {
+  const [closing, setClosing] = useState(false);
+  useEffect(() => {
+    const closeTimer = setTimeout(() => setClosing(true), 3200);
+    return () => clearTimeout(closeTimer);
+  }, []);
+  const hour = new Date().getHours();
+  const greeting = hour < 5 ? "Working late" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  return (
+    <div
+      className={`welcome-toast no-print${closing ? " welcome-toast-out" : ""}`}
+      onClick={() => setClosing(true)}
+      onAnimationEnd={() => { if (closing) onDone(); }}
+    >
+      <div className="welcome-toast-icon"><Sparkles size={17} /></div>
+      <div>
+        <div className="welcome-toast-title">{greeting}, {username}!</div>
+        <div className="welcome-toast-sub">Welcome back to Rabia Hospital Lab.</div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [config, setConfig] = useState(null);
   const [role, setRole] = useState(() => localStorage.getItem("reagent_role") || null);
@@ -79,6 +105,7 @@ export default function App() {
   const [editLog, setEditLog] = useState(null);
   const [error, setError] = useState("");
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false); // greet only right after a fresh login, not on every reload
 
   // The owner/super/admin/lab login columns on app_config are locked down
   // (no anon access) — only the `auth` edge function can read or write
@@ -186,6 +213,7 @@ export default function App() {
     setSessionToken(token);
     setRole(newRole);
     setUsername(newUsername);
+    setShowWelcome(true);
   }
   function logout() {
     localStorage.removeItem("reagent_role");
@@ -543,6 +571,25 @@ export default function App() {
         .dash-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(0,0,0,0.08) !important; }
         @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .dash-animate { animation: fadeSlideUp 0.4s ease both; }
+        @keyframes welcomeIn { from { opacity: 0; transform: translate(-50%, -14px) scale(0.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+        @keyframes welcomeOut { from { opacity: 1; transform: translate(-50%, 0) scale(1); } to { opacity: 0; transform: translate(-50%, -10px) scale(0.98); } }
+        @keyframes welcomeIconPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+        .welcome-toast {
+          position: fixed; top: 18px; left: 50%; z-index: 70; cursor: pointer;
+          display: flex; align-items: center; gap: 11px; background: #fff;
+          border: 1px solid #E1E8E5; border-radius: 12px; padding: 11px 18px 11px 12px;
+          box-shadow: 0 12px 32px rgba(15, 25, 26, 0.16);
+          animation: welcomeIn 0.4s cubic-bezier(.2,.9,.3,1.2) both;
+        }
+        .welcome-toast-out { animation: welcomeOut 0.35s ease both; }
+        .welcome-toast-icon {
+          width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
+          background: var(--accent-2-bg); color: var(--accent-1);
+          display: flex; align-items: center; justify-content: center;
+          animation: welcomeIconPulse 1.3s ease-in-out infinite;
+        }
+        .welcome-toast-title { font-weight: 700; font-size: 14px; color: #1B2328; }
+        .welcome-toast-sub { font-size: 12px; color: #7B8E8A; margin-top: 2px; }
         @keyframes blinkYellow { 0%, 100% { background: #FBF3DF; border-color: #B8860B; } 50% { background: #F5D98A; border-color: #8A6200; } }
         @keyframes blinkRed { 0%, 100% { background: #FBEAE6; border-color: #C1432B; } 50% { background: #F3AE9D; border-color: #7A1F10; } }
         .blink-soon { animation: blinkYellow 1s step-start infinite; border: 1px solid #B8860B; }
@@ -560,6 +607,8 @@ export default function App() {
           .mobile-topbar { display: flex; }
         }
       `}</style>
+
+      {showWelcome && <WelcomeToast username={username} onDone={() => setShowWelcome(false)} />}
 
       <div className="app-layout">
         {sidebarOpen && <div className="sidebar-backdrop no-print" onClick={() => setSidebarOpen(false)} />}
