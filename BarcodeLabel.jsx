@@ -82,8 +82,8 @@ export default function BarcodeLabel({ reagent, title, onClose }) {
         #print-root { display: none; }
         @media print {
           #root { display: none !important; }
-          #print-root { display: block !important; width: 38mm; padding: 1mm; }
-          @page { size: 40mm 52mm; margin: 1mm; }
+          #print-root { display: block !important; width: 38mm; padding: 2mm 1mm; }
+          @page { size: 40mm 56mm; margin: 0; }
         }
       `}</style>
     </div>
