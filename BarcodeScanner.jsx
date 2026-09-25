@@ -6,8 +6,32 @@ export default function BarcodeScanner({ onDetected, onClose }) {
   const scannerRef = useRef(null);
   const [error, setError] = useState("");
 
+  // The parent passes a fresh onDetected function every render (it isn't
+  // wrapped in useCallback). Depending on it directly in the effect below
+  // used to re-run start/stop on every parent re-render — including ones
+  // triggered by the scan itself — which is exactly the kind of race that
+  // called stop() on a scanner still starting up. A ref sidesteps that: the
+  // effect runs once, and always calls whatever onDetected currently is.
+  const onDetectedRef = useRef(onDetected);
+  onDetectedRef.current = onDetected;
+
   useEffect(() => {
     let cancelled = false;
+    // html5-qrcode's stop() throws synchronously — not a rejected promise —
+    // when called on a scanner that isn't running (e.g. called twice: once
+    // right after a successful scan, again from this cleanup on unmount).
+    // A plain .catch() only handles a rejection, not a throw before the
+    // promise is even returned, so both call sites need a real try/catch.
+    let stopped = false;
+    function safeStop() {
+      if (stopped || !scannerRef.current) return;
+      stopped = true;
+      try {
+        scannerRef.current.stop().catch(() => {});
+      } catch {
+        // already stopped/never started — nothing to do
+      }
+    }
 
     import("html5-qrcode")
       .then(({ Html5Qrcode }) => {
@@ -19,8 +43,8 @@ export default function BarcodeScanner({ onDetected, onClose }) {
             { facingMode: "environment" },
             { fps: 10, qrbox: { width: 240, height: 140 } },
             (decodedText) => {
-              scanner.stop().catch(() => {});
-              onDetected(decodedText);
+              safeStop();
+              onDetectedRef.current(decodedText);
             },
             () => {}
           )
@@ -30,9 +54,9 @@ export default function BarcodeScanner({ onDetected, onClose }) {
 
     return () => {
       cancelled = true;
-      if (scannerRef.current) scannerRef.current.stop().catch(() => {});
+      safeStop();
     };
-  }, [onDetected]);
+  }, []);
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(15,25,26,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 16 }}>
