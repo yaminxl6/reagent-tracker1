@@ -5,48 +5,45 @@ import { Printer, X } from "lucide-react";
 
 // A printable label for one reagent lot. Encodes the lot's own database id
 // (not the lot number) so a scan always matches the exact lot, even if two
-// different lots happen to share the same manufacturer lot number. A QR
-// code — not a 1D barcode — because the id is a full UUID; at small label
-// sizes a QR stays far more compact than a 1D barcode encoding the same
-// string would.
+// different lots happen to share the same manufacturer lot number.
 //
-// The actual print output is a React portal into #print-root (a sibling of
-// #root in index.html), not this modal's own DOM. Printing whatever's on
-// screen — even with the rest hidden via CSS visibility — leaves the full
-// app's height in the page layout (visibility:hidden doesn't collapse it),
-// which paginated into ~150 near-blank pages in testing. Hiding #root
-// outright and printing only the portaled content fixed that — but the
-// first fix then shrank the QR down to ~16mm physical size to force it
-// onto one page, which was too small to scan: the camera opened but never
-// detected anything. A QR encoding a 36-character UUID needs real size to
-// stay scannable, so the printed version now renders at a high internal
-// resolution (crisp on paper) but is fixed to a real 32mm physical size
-// via mm units — the @page size below was measured against that exact
-// content height so it still prints as one page, not "shrink until it
-// fits".
-function LabelContent({ reagent, qrRenderSize, qrDisplaySize, fontScale }) {
+// Printed via a React portal into #print-root (a sibling of #root in
+// index.html) with #root hidden outright for print — printing the modal
+// in place, even with the rest hidden via CSS visibility, left the whole
+// app's height in the page layout and paginated into ~150 blank pages.
+//
+// Page geometry: @page 44x34mm with a 1mm margin is what actually printed
+// correctly-sized on a real Zebra GK420t label printer in testing — a
+// later attempt at 40x56mm with margin 0 broke the fit entirely on that
+// same printer. A label printer like the GK420t is driven by whatever
+// stock size its own driver is configured for; @page is a request that
+// printer either honors closely (as it did at 44x34mm) or overrides
+// entirely, so this stays on the proven size instead of guessing a new
+// one, and the QR fills the available box proportionally (via CSS,
+// percentage of its container) rather than a fixed mm value that could
+// again mismatch whatever page geometry actually gets used.
+function LabelContent({ reagent, qrRenderSize, fillContainer, fontScale }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
     if (canvasRef.current && reagent) {
-      // toCanvas sets the canvas's own inline width/height style to match
-      // its pixel size — it has to be re-applied after the draw finishes,
-      // or a physical print size set via qrDisplaySize gets silently
-      // clobbered back to the render resolution in pixels.
       QRCode.toCanvas(canvasRef.current, reagent.id, { width: qrRenderSize, margin: 0 }).then(() => {
-        if (canvasRef.current && qrDisplaySize) {
-          canvasRef.current.style.width = qrDisplaySize;
-          canvasRef.current.style.height = qrDisplaySize;
+        // toCanvas sets the canvas's own inline width/height to its pixel
+        // size after drawing — clobbers any container-relative sizing
+        // unless reapplied afterward.
+        if (canvasRef.current && fillContainer) {
+          canvasRef.current.style.width = "46%";
+          canvasRef.current.style.height = "auto";
         }
       });
     }
-  }, [reagent, qrRenderSize, qrDisplaySize]);
+  }, [reagent, qrRenderSize, fillContainer]);
 
   return (
     <div id="barcode-label-print" style={{ textAlign: "center" }}>
-      <div style={{ fontWeight: 700, fontSize: 13 * fontScale, marginBottom: 4 * fontScale }}>{reagent.name}</div>
-      <canvas ref={canvasRef} style={qrDisplaySize ? { width: qrDisplaySize, height: qrDisplaySize } : { maxWidth: "100%" }} />
-      <div style={{ fontSize: 11 * fontScale, color: "#516361", marginTop: 4 * fontScale }}>لوت {reagent.lot_number}{reagent.expiry_date ? ` · ينتهي ${reagent.expiry_date}` : ""}</div>
+      <div style={{ fontWeight: 700, fontSize: 13 * fontScale, marginBottom: 2 * fontScale }}>{reagent.name}</div>
+      <canvas ref={canvasRef} style={fillContainer ? { width: "46%", height: "auto" } : { maxWidth: "100%" }} />
+      <div style={{ fontSize: 11 * fontScale, color: "#516361", marginTop: 2 * fontScale }}>لوت {reagent.lot_number}{reagent.expiry_date ? ` · ينتهي ${reagent.expiry_date}` : ""}</div>
     </div>
   );
 }
@@ -76,14 +73,14 @@ export default function BarcodeLabel({ reagent, title, onClose }) {
         </div>
       </div>
 
-      {printRoot && createPortal(<LabelContent reagent={reagent} qrRenderSize={320} qrDisplaySize="32mm" fontScale={0.85} />, printRoot)}
+      {printRoot && createPortal(<LabelContent reagent={reagent} qrRenderSize={280} fillContainer fontScale={0.75} />, printRoot)}
 
       <style>{`
         #print-root { display: none; }
         @media print {
           #root { display: none !important; }
-          #print-root { display: block !important; width: 38mm; padding: 2mm 1mm; }
-          @page { size: 40mm 56mm; margin: 0; }
+          #print-root { display: block !important; width: 42mm; padding: 1mm; }
+          @page { size: 44mm 34mm; margin: 1mm; }
         }
       `}</style>
     </div>
