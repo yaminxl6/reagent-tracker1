@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, ClipboardList, KeyRound, TestTube2, Beaker } from "lucide-react";
+import { TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, ClipboardList, KeyRound } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import logo from "./logo.jpg";
 import { authCall, getSessionToken, setSessionToken } from "./authClient";
@@ -61,6 +61,75 @@ const BURST_PARTICLES = Array.from({ length: 10 }, (_, i) => ({
   dist: 40 + (i % 3) * 12,
 }));
 
+// Hand-drawn glassware (instead of the flat lucide icons) so the pour scene
+// reads as an actual tube/beaker with a rounded glass body, a liquid level
+// clipped to that body's shape, and a glossy highlight streak — the liquid
+// rect's own y/height are animated in CSS (see .welcome-tube-liquid /
+// .welcome-cup-liquid) so it recedes/rises inside whatever shape the
+// clipPath describes, without hand-animating the rounded bottom each frame.
+function TubeGlass() {
+  return (
+    <svg viewBox="0 0 34 96" width="34" height="96" style={{ overflow: "visible", display: "block" }}>
+      <defs>
+        <linearGradient id="tubeLiquidGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" style={{ stopColor: "var(--accent-2)" }} />
+          <stop offset="100%" style={{ stopColor: "var(--accent-1)" }} />
+        </linearGradient>
+        <linearGradient id="tubeGlassSheen" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#fff" stopOpacity="0.55" />
+          <stop offset="45%" stopColor="#fff" stopOpacity="0.08" />
+          <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+        <clipPath id="tubeInterior">
+          <path d="M 9 2 L 9 72 A 8 8 0 0 0 25 72 L 25 2 Z" />
+        </clipPath>
+        <filter id="tubeShadow" x="-60%" y="-20%" width="220%" height="150%">
+          <feDropShadow dx="2" dy="5" stdDeviation="3" floodColor="#0F2E2C" floodOpacity="0.18" />
+        </filter>
+      </defs>
+      <g filter="url(#tubeShadow)">
+        <path d="M 7 4 L 7 72 A 10 10 0 0 0 27 72 L 27 4" fill="url(#tubeGlassSheen)" stroke="#93A8A5" strokeWidth="2.2" strokeLinecap="round" />
+        <rect className="welcome-tube-liquid" x="9" width="16" y="30" height="42" fill="url(#tubeLiquidGrad)" clipPath="url(#tubeInterior)" />
+        <path d="M 9 2 L 9 72 A 8 8 0 0 0 12 79" fill="none" stroke="#fff" strokeOpacity="0.5" strokeWidth="2" strokeLinecap="round" clipPath="url(#tubeInterior)" />
+        <ellipse cx="17" cy="4" rx="10" ry="2.3" fill="none" stroke="#93A8A5" strokeWidth="1.6" />
+        <ellipse cx="17" cy="4" rx="7.5" ry="1.4" fill="#fff" opacity="0.4" />
+      </g>
+    </svg>
+  );
+}
+function CupGlass() {
+  return (
+    <svg viewBox="0 0 80 68" width="66" height="56" style={{ overflow: "visible", display: "block" }}>
+      <defs>
+        <linearGradient id="cupLiquidGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" style={{ stopColor: "var(--accent-2)" }} />
+          <stop offset="100%" style={{ stopColor: "var(--accent-1)" }} />
+        </linearGradient>
+        <linearGradient id="cupGlassSheen" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#fff" stopOpacity="0.5" />
+          <stop offset="40%" stopColor="#fff" stopOpacity="0.08" />
+          <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+        <clipPath id="cupInterior">
+          <path d="M 17 6 L 22 54 A 3 3 0 0 0 25 57 L 49 57 A 3 3 0 0 0 52 54 L 57 6 Z" />
+        </clipPath>
+        <filter id="cupShadow" x="-40%" y="-20%" width="180%" height="150%">
+          <feDropShadow dx="2" dy="5" stdDeviation="3" floodColor="#0F2E2C" floodOpacity="0.18" />
+        </filter>
+      </defs>
+      <g filter="url(#cupShadow)">
+        <path d="M 14 4 L 20 56 A 4 4 0 0 0 24 60 L 50 60 A 4 4 0 0 0 54 56 L 58 10 L 66 2 L 60 4" fill="url(#cupGlassSheen)" stroke="#93A8A5" strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round" />
+        <rect className="welcome-cup-liquid" x="17" width="40" y="57" height="0" fill="url(#cupLiquidGrad)" clipPath="url(#cupInterior)" />
+        <path d="M 18 8 L 23 52" fill="none" stroke="#fff" strokeOpacity="0.5" strokeWidth="2" strokeLinecap="round" />
+        <ellipse cx="37" cy="4" rx="23" ry="2.4" fill="none" stroke="#93A8A5" strokeWidth="1.6" />
+        <line x1="52" y1="18" x2="57" y2="18" stroke="#B3C2BF" strokeWidth="1" />
+        <line x1="50" y1="32" x2="56" y2="32" stroke="#B3C2BF" strokeWidth="1" />
+        <line x1="48" y1="46" x2="54" y2="46" stroke="#B3C2BF" strokeWidth="1" />
+      </g>
+    </svg>
+  );
+}
+
 // A full-screen splash shown right after a fresh login (not on every
 // reload — App only sets showWelcome=true from handleLogin itself), same
 // footprint as the Login screen it replaces. The tube-tip, drops and cup
@@ -90,15 +159,14 @@ function WelcomeSplash({ username, onDone }) {
   return (
     <div className={`welcome-splash${phase === "leaving" ? " welcome-splash-out" : ""}`} onClick={skip}>
       <div className="welcome-scene">
-        <div className="welcome-tube"><TestTube2 size={44} strokeWidth={1.6} /></div>
+        <div className="welcome-tube"><TubeGlass /></div>
         <div className="welcome-drops">
           <span className="welcome-drop wd1" />
           <span className="welcome-drop wd2" />
           <span className="welcome-drop wd3" />
         </div>
         <div className="welcome-cup">
-          <div className="welcome-cup-fill" />
-          <span className="welcome-cup-icon"><Beaker size={52} strokeWidth={1.6} /></span>
+          <CupGlass />
           {phase !== "pour" && (
             <div className="welcome-burst">
               {BURST_PARTICLES.map((p, i) => (
@@ -615,40 +683,42 @@ export default function App() {
           animation: splashIn 0.3s ease both;
         }
         .welcome-splash-out { animation: splashOut 0.35s ease both; }
-        .welcome-scene { position: relative; width: 220px; height: 130px; margin-bottom: 26px; }
+        .welcome-scene { position: relative; width: 190px; height: 112px; margin-bottom: 26px; }
         @keyframes tubeTip {
           0%, 15% { transform: rotate(0deg); }
           45%, 80% { transform: rotate(58deg); }
           100% { transform: rotate(0deg); }
         }
         .welcome-tube {
-          position: absolute; top: 2px; left: 26px; color: var(--accent-1);
-          transform-origin: 70% 88%;
+          position: absolute; top: 0; left: 44px;
+          transform-origin: 75% 88%;
           animation: tubeTip 900ms ease-in-out both;
         }
-        .welcome-drops { position: absolute; top: 42px; left: 88px; width: 60px; height: 70px; }
+        @keyframes tubeLiquidRecede {
+          from { y: 30px; height: 42px; }
+          to   { y: 55px; height: 17px; }
+        }
+        .welcome-tube-liquid { animation: tubeLiquidRecede 900ms ease-in both; }
+        .welcome-drops { position: absolute; top: 28px; left: 122px; width: 30px; height: 36px; }
         .welcome-drop {
-          position: absolute; top: 0; left: 0; width: 6px; height: 6px; border-radius: 50%;
+          position: absolute; top: 0; left: 0; width: 5px; height: 5px; border-radius: 50%;
           background: var(--accent-1); opacity: 0;
         }
         @keyframes dropFall {
           0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
           20% { opacity: 1; }
-          100% { opacity: 0; transform: translate(46px, 60px) scale(0.9); }
+          100% { opacity: 0; transform: translate(10px, 28px) scale(0.9); }
         }
-        .wd1 { animation: dropFall 450ms ease-in 200ms both; }
-        .wd2 { animation: dropFall 450ms ease-in 380ms both; }
-        .wd3 { animation: dropFall 450ms ease-in 560ms both; }
-        .welcome-cup { position: absolute; bottom: 0; right: 14px; width: 52px; height: 52px; color: var(--accent-2); }
-        @keyframes cupFill { from { height: 0; } to { height: 32px; } }
-        .welcome-cup-fill {
-          position: absolute; left: 9px; right: 9px; bottom: 6px; height: 0; z-index: 0;
-          background: linear-gradient(180deg, var(--accent-2) 0%, var(--accent-1) 100%);
-          border-radius: 0 0 6px 6px; opacity: 0.85;
-          animation: cupFill 900ms ease-out both;
+        .wd1 { animation: dropFall 400ms ease-in 200ms both; }
+        .wd2 { animation: dropFall 400ms ease-in 360ms both; }
+        .wd3 { animation: dropFall 400ms ease-in 520ms both; }
+        .welcome-cup { position: absolute; bottom: 0; right: 16px; }
+        @keyframes cupFill {
+          from { y: 57px; height: 0px; }
+          to   { y: 22px; height: 35px; }
         }
-        .welcome-cup-icon { position: relative; z-index: 1; display: flex; }
-        .welcome-burst { position: absolute; top: 50%; left: 50%; width: 0; height: 0; z-index: 2; }
+        .welcome-cup-liquid { animation: cupFill 900ms ease-out both; }
+        .welcome-burst { position: absolute; top: 60%; left: 62%; width: 0; height: 0; z-index: 2; }
         .welcome-burst-particle {
           position: absolute; top: 0; left: 0; width: 6px; height: 6px; border-radius: 50%;
           background: var(--accent-1); opacity: 1;
