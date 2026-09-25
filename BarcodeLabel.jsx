@@ -12,38 +12,36 @@ import { Printer, X } from "lucide-react";
 // in place, even with the rest hidden via CSS visibility, left the whole
 // app's height in the page layout and paginated into ~150 blank pages.
 //
-// Page geometry: @page 44x34mm with a 1mm margin is what actually printed
-// correctly-sized on a real Zebra GK420t label printer in testing — a
-// later attempt at 40x56mm with margin 0 broke the fit entirely on that
-// same printer. A label printer like the GK420t is driven by whatever
-// stock size its own driver is configured for; @page is a request that
-// printer either honors closely (as it did at 44x34mm) or overrides
-// entirely, so this stays on the proven size instead of guessing a new
-// one, and the QR fills the available box proportionally (via CSS,
-// percentage of its container) rather than a fixed mm value that could
-// again mismatch whatever page geometry actually gets used.
-function LabelContent({ reagent, qrRenderSize, fillContainer, fontScale }) {
+// Page geometry: 76.2 x 50.8mm (a standard 3x2 inch label), portrait —
+// read directly from the Zebra ZDesigner driver's own Stocks properties
+// on the machine sharing this GK420t over AirPrint. Every size guessed
+// before this (44x34, 40x56, 34x44) mismatched that configured stock and
+// printed cut off, rotated, or blank — a label printer's driver decides
+// the actual page geometry, and @page only matches reality when it's set
+// to what that driver is actually configured for, not a plausible guess.
+function LabelContent({ reagent, qrRenderSize, qrDisplaySize, fontScale }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
     if (canvasRef.current && reagent) {
+      // toCanvas sets the canvas's own inline width/height style to match
+      // its pixel size — it has to be re-applied after the draw finishes,
+      // or a physical print size set via qrDisplaySize gets silently
+      // clobbered back to the render resolution in pixels.
       QRCode.toCanvas(canvasRef.current, reagent.id, { width: qrRenderSize, margin: 0 }).then(() => {
-        // toCanvas sets the canvas's own inline width/height to its pixel
-        // size after drawing — clobbers any container-relative sizing
-        // unless reapplied afterward.
-        if (canvasRef.current && fillContainer) {
-          canvasRef.current.style.width = "60%";
-          canvasRef.current.style.height = "auto";
+        if (canvasRef.current && qrDisplaySize) {
+          canvasRef.current.style.width = qrDisplaySize;
+          canvasRef.current.style.height = qrDisplaySize;
         }
       });
     }
-  }, [reagent, qrRenderSize, fillContainer]);
+  }, [reagent, qrRenderSize, qrDisplaySize]);
 
   return (
     <div id="barcode-label-print" style={{ textAlign: "center" }}>
-      <div style={{ fontWeight: 700, fontSize: 13 * fontScale, marginBottom: 2 * fontScale }}>{reagent.name}</div>
-      <canvas ref={canvasRef} style={fillContainer ? { width: "60%", height: "auto" } : { maxWidth: "100%" }} />
-      <div style={{ fontSize: 11 * fontScale, color: "#516361", marginTop: 2 * fontScale }}>لوت {reagent.lot_number}{reagent.expiry_date ? ` · ينتهي ${reagent.expiry_date}` : ""}</div>
+      <div style={{ fontWeight: 700, fontSize: 14 * fontScale, marginBottom: 3 * fontScale }}>{reagent.name}</div>
+      <canvas ref={canvasRef} style={qrDisplaySize ? { width: qrDisplaySize, height: qrDisplaySize } : { maxWidth: "100%" }} />
+      <div style={{ fontSize: 12 * fontScale, color: "#516361", marginTop: 3 * fontScale }}>لوت {reagent.lot_number}{reagent.expiry_date ? ` · ينتهي ${reagent.expiry_date}` : ""}</div>
     </div>
   );
 }
@@ -73,14 +71,14 @@ export default function BarcodeLabel({ reagent, title, onClose }) {
         </div>
       </div>
 
-      {printRoot && createPortal(<LabelContent reagent={reagent} qrRenderSize={280} fillContainer fontScale={0.75} />, printRoot)}
+      {printRoot && createPortal(<LabelContent reagent={reagent} qrRenderSize={340} qrDisplaySize="30mm" fontScale={0.95} />, printRoot)}
 
       <style>{`
         #print-root { display: none; }
         @media print {
           #root { display: none !important; }
-          #print-root { display: block !important; width: 32mm; padding: 1mm; }
-          @page { size: 34mm 44mm; margin: 1mm; }
+          #print-root { display: block !important; width: 72mm; padding: 2mm; }
+          @page { size: 76.2mm 50.8mm; margin: 2mm; }
         }
       `}</style>
     </div>
