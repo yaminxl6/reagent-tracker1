@@ -279,7 +279,7 @@ export default function App() {
     }
     await logActivity("receive", "reagent", `${entry.name} — Lot ${entry.lotNumber}, ${entry.quantityReceived} ${entry.unit}, received by ${entry.receivedBy}${entry.fridgeName ? ` — stored in ${entry.fridgeName}` : ""}`);
     setShowWizard(false);
-    setJustReceived(inserted);
+    setJustReceived({ ...inserted, __justAdded: true });
     loadAll();
   }
 
@@ -609,6 +609,7 @@ export default function App() {
             onBack={() => setTab("stock")}
             onEditReagent={setEditReagent} onDeleteReagent={deleteReagent} onDisposeReagent={disposeReagent}
             onEditLog={setEditLog} onDeleteLog={deleteLog}
+            onPrintBarcode={setJustReceived}
           />
         )}
         {tab === "reports" && <Reports reagents={reagents} logs={logs} departments={config.departments || []} role={role} onPurgeReagent={purgeReagent} onPurgeLog={purgeLog} />}
@@ -622,7 +623,7 @@ export default function App() {
       </div>
 
       {showWizard && <ReceiveWizard presets={presets} reagents={reagents} devices={devices} fridgeNames={fridgeNames} role={role} departments={config.departments || []} username={username} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
-      {justReceived && <BarcodeLabel reagent={justReceived} onClose={() => setJustReceived(null)} />}
+      {justReceived && <BarcodeLabel reagent={justReceived} title={justReceived.__justAdded ? "تم تسجيل اللوت ✓" : undefined} onClose={() => setJustReceived(null)} />}
       {showLog && <LogConsumptionModal reagents={reagents.filter((r) => !r.deleted)} username={username} onClose={() => setShowLog(false)} onSubmit={recordConsumption} />}
       {editReagent && <EditReagentModal reagent={editReagent} onClose={() => setEditReagent(null)} onSave={saveEditedReagent} />}
       {editLog && <EditLogModal log={editLog} onClose={() => setEditLog(null)} onSave={saveEditedLog} />}
@@ -870,7 +871,7 @@ function Dashboard({ groups, allNames, counts, departments, role, onDeleteReagen
   );
 }
 
-function DetailView({ group, logs, role, expiryWarningDays, onBack, onEditReagent, onDeleteReagent, onDisposeReagent, onEditLog, onDeleteLog }) {
+function DetailView({ group, logs, role, expiryWarningDays, onBack, onEditReagent, onDeleteReagent, onDisposeReagent, onEditLog, onDeleteLog, onPrintBarcode }) {
   const last30 = logs.filter((l) => daysBetween(todayISO(), l.date) <= 30);
   const consumed30 = last30.reduce((s, l) => s + l.amount, 0);
   const avgDaily = consumed30 / 30;
@@ -918,6 +919,7 @@ function DetailView({ group, logs, role, expiryWarningDays, onBack, onEditReagen
                 <div style={{ flex: 1, fontFamily: "'IBM Plex Mono', monospace", fontSize: 13 }}>Lot {it.lot_number}</div>
                 <div style={{ fontSize: 13 }}>{it.current_quantity}/{it.quantity_received} {it.unit}</div>
                 <div style={{ fontSize: 12.5, color: m.color, fontWeight: 600 }}>{dExp < 0 ? `expired ${Math.abs(dExp)}d ago` : `${dExp}d left`}</div>
+                <button onClick={() => onPrintBarcode(it)} title="Print barcode" style={{ background: "none", border: "none", color: "#8A9694" }}><Printer size={14} /></button>
                 <button onClick={() => onEditReagent(it)} style={{ background: "none", border: "none", color: "#8A9694" }}><Pencil size={14} /></button>
                 {it.current_quantity <= 0 && (
                   <button onClick={() => onDisposeReagent(it.id)} title="Mark as disposed / thrown away" style={{ background: "none", border: "1px solid #C7D1CE", color: "#8A6D3B", borderRadius: 6, padding: "3px 8px", fontSize: 11, fontWeight: 700 }}>Dispose</button>

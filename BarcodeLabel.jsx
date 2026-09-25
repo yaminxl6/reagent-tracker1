@@ -49,7 +49,7 @@ export default function BarcodeLabel({ reagent, title, onClose }) {
     <div style={{ position: "fixed", inset: 0, background: "rgba(15,25,26,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 60 }} className="no-print">
       <div style={{ background: "#fff", borderRadius: 12, width: "100%", maxWidth: 360, padding: 22 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>{title || "تم تسجيل اللوت ✓"}</div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{title || "باركود اللوت"}</div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#8A9694" }}><X size={18} /></button>
         </div>
         <div style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 16 }}>تبي تطبع باركود تلصقه على العبوة أو الكرتون؟ امسحه لاحقاً بدل ما تدخل بياناته يدوي.</div>
