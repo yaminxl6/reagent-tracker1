@@ -32,7 +32,7 @@ function LabelContent({ reagent, qrRenderSize, fillContainer, fontScale }) {
         // size after drawing — clobbers any container-relative sizing
         // unless reapplied afterward.
         if (canvasRef.current && fillContainer) {
-          canvasRef.current.style.width = "46%";
+          canvasRef.current.style.width = "60%";
           canvasRef.current.style.height = "auto";
         }
       });
@@ -42,7 +42,7 @@ function LabelContent({ reagent, qrRenderSize, fillContainer, fontScale }) {
   return (
     <div id="barcode-label-print" style={{ textAlign: "center" }}>
       <div style={{ fontWeight: 700, fontSize: 13 * fontScale, marginBottom: 2 * fontScale }}>{reagent.name}</div>
-      <canvas ref={canvasRef} style={fillContainer ? { width: "46%", height: "auto" } : { maxWidth: "100%" }} />
+      <canvas ref={canvasRef} style={fillContainer ? { width: "60%", height: "auto" } : { maxWidth: "100%" }} />
       <div style={{ fontSize: 11 * fontScale, color: "#516361", marginTop: 2 * fontScale }}>لوت {reagent.lot_number}{reagent.expiry_date ? ` · ينتهي ${reagent.expiry_date}` : ""}</div>
     </div>
   );
@@ -79,8 +79,8 @@ export default function BarcodeLabel({ reagent, title, onClose }) {
         #print-root { display: none; }
         @media print {
           #root { display: none !important; }
-          #print-root { display: block !important; width: 42mm; padding: 1mm; }
-          @page { size: 44mm 34mm; margin: 1mm; }
+          #print-root { display: block !important; width: 32mm; padding: 1mm; }
+          @page { size: 34mm 44mm; margin: 1mm; }
         }
       `}</style>
     </div>
