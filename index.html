@@ -10,6 +10,11 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Printable content (e.g. a barcode label) is portaled in here so
+         print CSS can hide #root entirely — hiding it with visibility
+         instead of display would leave its full height in the page layout
+         and produce dozens of near-blank printed pages. -->
+    <div id="print-root"></div>
     <script type="module" src="/main.jsx"></script>
   </body>
 </html>
