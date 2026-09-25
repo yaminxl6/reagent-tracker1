@@ -41,7 +41,7 @@ function LabelContent({ reagent, qrRenderSize, qrDisplaySize, fontScale }) {
     <div id="barcode-label-print" style={{ textAlign: "center" }}>
       <div style={{ fontWeight: 700, fontSize: 14 * fontScale, marginBottom: 3 * fontScale }}>{reagent.name}</div>
       <canvas ref={canvasRef} style={qrDisplaySize ? { width: qrDisplaySize, height: qrDisplaySize } : { maxWidth: "100%" }} />
-      <div style={{ fontSize: 12 * fontScale, color: "#516361", marginTop: 3 * fontScale }}>لوت {reagent.lot_number}{reagent.expiry_date ? ` · ينتهي ${reagent.expiry_date}` : ""}</div>
+      <div style={{ fontSize: 12 * fontScale, color: "#516361", marginTop: 3 * fontScale }}>Lot {reagent.lot_number}{reagent.expiry_date ? ` · Exp ${reagent.expiry_date}` : ""}</div>
     </div>
   );
 }
@@ -54,19 +54,19 @@ export default function BarcodeLabel({ reagent, title, onClose }) {
     <div style={{ position: "fixed", inset: 0, background: "rgba(15,25,26,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 60 }} className="no-print">
       <div style={{ background: "#fff", borderRadius: 12, width: "100%", maxWidth: 360, padding: 22 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>{title || "باركود اللوت"}</div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{title || "Lot barcode"}</div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#8A9694" }}><X size={18} /></button>
         </div>
-        <div style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 16 }}>تبي تطبع باركود تلصقه على العبوة أو الكرتون؟ امسحه لاحقاً بدل ما تدخل بياناته يدوي.</div>
+        <div style={{ fontSize: 13, color: "#7B8E8A", marginBottom: 16 }}>Print a barcode to stick on the bottle or box? Scan it later instead of entering the details by hand.</div>
 
         <div style={{ border: "1px dashed #C7D1CE", borderRadius: 8, padding: 14, marginBottom: 16 }}>
           <LabelContent reagent={reagent} qrRenderSize={140} fontScale={1} />
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, background: "#F0F3F2", color: "#1B2B2E", border: "1px solid #C7D1CE", borderRadius: 8, padding: "11px", fontWeight: 700, fontSize: 14 }}>تخطي</button>
+          <button onClick={onClose} style={{ flex: 1, background: "#F0F3F2", color: "#1B2B2E", border: "1px solid #C7D1CE", borderRadius: 8, padding: "11px", fontWeight: 700, fontSize: 14 }}>Skip</button>
           <button onClick={() => window.print()} style={{ flex: 2, background: "#0F7173", color: "#fff", border: "none", borderRadius: 8, padding: "11px", fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            <Printer size={15} /> اطبع الباركود
+            <Printer size={15} /> Print barcode
           </button>
         </div>
       </div>

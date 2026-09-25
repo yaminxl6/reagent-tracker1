@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Beaker, TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, ClipboardList, KeyRound } from "lucide-react";
+import { TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, ClipboardList, KeyRound } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import logo from "./logo.jpg";
 import { authCall, getSessionToken, setSessionToken } from "./authClient";
 import Login from "./Login";
 import Settings from "./Settings";
@@ -623,7 +624,7 @@ export default function App() {
       </div>
 
       {showWizard && <ReceiveWizard presets={presets} reagents={reagents} devices={devices} fridgeNames={fridgeNames} role={role} departments={config.departments || []} username={username} onClose={() => setShowWizard(false)} onSubmit={addReagent} />}
-      {justReceived && <BarcodeLabel reagent={justReceived} title={justReceived.__justAdded ? "تم تسجيل اللوت ✓" : undefined} onClose={() => setJustReceived(null)} />}
+      {justReceived && <BarcodeLabel reagent={justReceived} title={justReceived.__justAdded ? "Lot registered ✓" : undefined} onClose={() => setJustReceived(null)} />}
       {showLog && <LogConsumptionModal reagents={reagents.filter((r) => !r.deleted)} username={username} onClose={() => setShowLog(false)} onSubmit={recordConsumption} />}
       {editReagent && <EditReagentModal reagent={editReagent} onClose={() => setEditReagent(null)} onSave={saveEditedReagent} />}
       {editLog && <EditLogModal log={editLog} onClose={() => setEditLog(null)} onSave={saveEditedLog} />}
@@ -686,8 +687,8 @@ function Sidebar({ className, tab, setTab, role, appName, appNameColor, onAdd, o
   return (
     <aside className={className}>
       <div style={{ padding: "20px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #EDEFF2" }}>
-        <div style={{ width: 36, height: 36, borderRadius: 9, background: "var(--accent-2-bg)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <Beaker size={19} color="var(--accent-1)" />
+        <div style={{ width: 36, height: 36, borderRadius: 9, background: "#fff", border: "1px solid #EDEFF2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
+          <img src={logo} alt="Rabia Hospital" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
         </div>
         <div>
           <div style={{ color: appNameColor || "#1B2328", fontWeight: 700, fontSize: 15.5, letterSpacing: 0.1 }}>{appName || "Reagent Log"}</div>

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { Beaker, Lock, KeyRound } from "lucide-react";
+import { Lock, KeyRound } from "lucide-react";
 import { authCall } from "./authClient";
+import logo from "./logo.jpg";
 
 const inputStyle = { width: "100%", border: "1px solid #C7D1CE", borderRadius: 7, padding: "9px 11px", fontSize: 14, marginTop: 4, boxSizing: "border-box" };
 
@@ -46,8 +47,8 @@ export default function Login({ config, onLogin }) {
       <style>{`@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');`}</style>
       <form onSubmit={submit} style={{ background: "#fff", borderRadius: 14, padding: 32, width: "100%", maxWidth: 360, border: "1px solid #E1E8E5" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
-          <div style={{ background: "#1B2B2E", borderRadius: 8, padding: 8 }}>
-            <Beaker size={20} color="#5FBFB0" />
+          <div style={{ background: "#fff", border: "1px solid #E1E8E5", borderRadius: 8, width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
+            <img src={logo} alt="Rabia Hospital" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
           </div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 16, color: config.app_name_color || "#1B2328" }}>{config.app_name || "Reagent Log"}</div>
