@@ -71,7 +71,7 @@ export default function BarcodeLabel({ reagent, title, onClose }) {
         </div>
       </div>
 
-      {printRoot && createPortal(<LabelContent reagent={reagent} qrRenderSize={340} qrDisplaySize="30mm" fontScale={0.95} />, printRoot)}
+      {printRoot && createPortal(<LabelContent reagent={reagent} qrRenderSize={340} qrDisplaySize="15mm" fontScale={0.5} />, printRoot)}
 
       <style>{`
         #print-root { display: none; }
