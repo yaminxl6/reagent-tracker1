@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, ClipboardList, KeyRound, Sparkles } from "lucide-react";
+import { TrendingDown, Plus, Users as UsersIcon, FileText, LayoutGrid, ChevronRight, X, Droplet, ScanLine, Pencil, Trash2, Bell, LogOut, SlidersHorizontal, Download, AlertTriangle, ClipboardX, History, BarChart3, Printer, Refrigerator, Home as Home2, Cpu, Menu as MenuIcon, CheckCircle2, Clock, Truck, ClipboardList, KeyRound, TestTube2, Beaker } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import logo from "./logo.jpg";
 import { authCall, getSessionToken, setSessionToken } from "./authClient";
@@ -56,28 +56,63 @@ const STATUS_META = {
   green: { label: "Stable", color: "#2F6B4F", bg: "#E8F2EC" },
 };
 
-// A brief animated greeting shown right after a fresh login (not on every
-// reload — App only sets showWelcome=true from handleLogin itself). Closes
-// itself after a few seconds, or immediately on click.
-function WelcomeToast({ username, onDone }) {
-  const [closing, setClosing] = useState(false);
+const BURST_PARTICLES = Array.from({ length: 10 }, (_, i) => ({
+  angle: (360 / 10) * i,
+  dist: 40 + (i % 3) * 12,
+}));
+
+// A full-screen splash shown right after a fresh login (not on every
+// reload — App only sets showWelcome=true from handleLogin itself), same
+// footprint as the Login screen it replaces. The tube-tip, drops and cup
+// fill are self-timed CSS keyframes (~950ms); the burst and text are
+// phase-gated in JS so they start only once the fill actually finishes,
+// and so a click can skip straight to the dashboard at any point.
+function WelcomeSplash({ username, onDone }) {
+  const [phase, setPhase] = useState("pour"); // pour -> burst -> text -> leaving
   useEffect(() => {
-    const closeTimer = setTimeout(() => setClosing(true), 3200);
-    return () => clearTimeout(closeTimer);
-  }, []);
+    const timers = [
+      setTimeout(() => setPhase("burst"), 950),
+      setTimeout(() => setPhase("text"), 1150),
+      setTimeout(() => setPhase("leaving"), 3300),
+      setTimeout(onDone, 3650),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [onDone]);
+
+  function skip() {
+    setPhase("leaving");
+    setTimeout(onDone, 350);
+  }
+
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "Working late" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+
   return (
-    <div
-      className={`welcome-toast no-print${closing ? " welcome-toast-out" : ""}`}
-      onClick={() => setClosing(true)}
-      onAnimationEnd={() => { if (closing) onDone(); }}
-    >
-      <div className="welcome-toast-icon"><Sparkles size={17} /></div>
-      <div>
-        <div className="welcome-toast-title">{greeting}, {username}!</div>
-        <div className="welcome-toast-sub">Welcome back to Rabia Hospital Lab.</div>
+    <div className={`welcome-splash${phase === "leaving" ? " welcome-splash-out" : ""}`} onClick={skip}>
+      <div className="welcome-scene">
+        <div className="welcome-tube"><TestTube2 size={44} strokeWidth={1.6} /></div>
+        <div className="welcome-drops">
+          <span className="welcome-drop wd1" />
+          <span className="welcome-drop wd2" />
+          <span className="welcome-drop wd3" />
+        </div>
+        <div className="welcome-cup">
+          <div className="welcome-cup-fill" />
+          <span className="welcome-cup-icon"><Beaker size={52} strokeWidth={1.6} /></span>
+          {phase !== "pour" && (
+            <div className="welcome-burst">
+              {BURST_PARTICLES.map((p, i) => (
+                <span key={i} className="welcome-burst-particle" style={{ "--angle": `${p.angle}deg`, "--dist": `${p.dist}px` }} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+      <div className={`welcome-text${phase === "text" || phase === "leaving" ? " welcome-text-in" : ""}`}>
+        <div className="welcome-title">{greeting}, {username}!</div>
+        <div className="welcome-sub">Welcome back to Rabia Hospital Lab.</div>
+      </div>
+      <div className="welcome-skip">Tap anywhere to continue</div>
     </div>
   );
 }
@@ -571,25 +606,66 @@ export default function App() {
         .dash-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(0,0,0,0.08) !important; }
         @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .dash-animate { animation: fadeSlideUp 0.4s ease both; }
-        @keyframes welcomeIn { from { opacity: 0; transform: translate(-50%, -14px) scale(0.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
-        @keyframes welcomeOut { from { opacity: 1; transform: translate(-50%, 0) scale(1); } to { opacity: 0; transform: translate(-50%, -10px) scale(0.98); } }
-        @keyframes welcomeIconPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
-        .welcome-toast {
-          position: fixed; top: 18px; left: 50%; z-index: 70; cursor: pointer;
-          display: flex; align-items: center; gap: 11px; background: #fff;
-          border: 1px solid #E1E8E5; border-radius: 12px; padding: 11px 18px 11px 12px;
-          box-shadow: 0 12px 32px rgba(15, 25, 26, 0.16);
-          animation: welcomeIn 0.4s cubic-bezier(.2,.9,.3,1.2) both;
+        @keyframes splashIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes splashOut { from { opacity: 1; } to { opacity: 0; } }
+        .welcome-splash {
+          position: fixed; inset: 0; z-index: 80; cursor: pointer;
+          background: #F0F3F2; font-family: 'IBM Plex Sans', sans-serif;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          animation: splashIn 0.3s ease both;
         }
-        .welcome-toast-out { animation: welcomeOut 0.35s ease both; }
-        .welcome-toast-icon {
-          width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
-          background: var(--accent-2-bg); color: var(--accent-1);
-          display: flex; align-items: center; justify-content: center;
-          animation: welcomeIconPulse 1.3s ease-in-out infinite;
+        .welcome-splash-out { animation: splashOut 0.35s ease both; }
+        .welcome-scene { position: relative; width: 220px; height: 130px; margin-bottom: 26px; }
+        @keyframes tubeTip {
+          0%, 15% { transform: rotate(0deg); }
+          45%, 80% { transform: rotate(58deg); }
+          100% { transform: rotate(0deg); }
         }
-        .welcome-toast-title { font-weight: 700; font-size: 14px; color: #1B2328; }
-        .welcome-toast-sub { font-size: 12px; color: #7B8E8A; margin-top: 2px; }
+        .welcome-tube {
+          position: absolute; top: 2px; left: 26px; color: var(--accent-1);
+          transform-origin: 70% 88%;
+          animation: tubeTip 900ms ease-in-out both;
+        }
+        .welcome-drops { position: absolute; top: 42px; left: 88px; width: 60px; height: 70px; }
+        .welcome-drop {
+          position: absolute; top: 0; left: 0; width: 6px; height: 6px; border-radius: 50%;
+          background: var(--accent-1); opacity: 0;
+        }
+        @keyframes dropFall {
+          0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+          20% { opacity: 1; }
+          100% { opacity: 0; transform: translate(46px, 60px) scale(0.9); }
+        }
+        .wd1 { animation: dropFall 450ms ease-in 200ms both; }
+        .wd2 { animation: dropFall 450ms ease-in 380ms both; }
+        .wd3 { animation: dropFall 450ms ease-in 560ms both; }
+        .welcome-cup { position: absolute; bottom: 0; right: 14px; width: 52px; height: 52px; color: var(--accent-2); }
+        @keyframes cupFill { from { height: 0; } to { height: 32px; } }
+        .welcome-cup-fill {
+          position: absolute; left: 9px; right: 9px; bottom: 6px; height: 0; z-index: 0;
+          background: linear-gradient(180deg, var(--accent-2) 0%, var(--accent-1) 100%);
+          border-radius: 0 0 6px 6px; opacity: 0.85;
+          animation: cupFill 900ms ease-out both;
+        }
+        .welcome-cup-icon { position: relative; z-index: 1; display: flex; }
+        .welcome-burst { position: absolute; top: 50%; left: 50%; width: 0; height: 0; z-index: 2; }
+        .welcome-burst-particle {
+          position: absolute; top: 0; left: 0; width: 6px; height: 6px; border-radius: 50%;
+          background: var(--accent-1); opacity: 1;
+          animation: burstOut 550ms ease-out both;
+        }
+        .welcome-burst-particle:nth-child(3n+1) { background: var(--accent-2); }
+        .welcome-burst-particle:nth-child(3n+2) { background: var(--accent-3); }
+        @keyframes burstOut {
+          0% { transform: translate(-50%, -50%) rotate(var(--angle)) translateX(0) scale(0); opacity: 1; }
+          60% { opacity: 1; }
+          100% { transform: translate(-50%, -50%) rotate(var(--angle)) translateX(var(--dist)) scale(1); opacity: 0; }
+        }
+        .welcome-text { opacity: 0; transform: translateY(8px); transition: opacity 0.4s ease, transform 0.4s ease; text-align: center; }
+        .welcome-text-in { opacity: 1; transform: translateY(0); }
+        .welcome-title { font-weight: 700; font-size: 20px; color: #1B2328; }
+        .welcome-sub { font-size: 13px; color: #7B8E8A; margin-top: 4px; }
+        .welcome-skip { position: absolute; bottom: 26px; font-size: 11.5px; color: #9AA6A4; }
         @keyframes blinkYellow { 0%, 100% { background: #FBF3DF; border-color: #B8860B; } 50% { background: #F5D98A; border-color: #8A6200; } }
         @keyframes blinkRed { 0%, 100% { background: #FBEAE6; border-color: #C1432B; } 50% { background: #F3AE9D; border-color: #7A1F10; } }
         .blink-soon { animation: blinkYellow 1s step-start infinite; border: 1px solid #B8860B; }
@@ -608,7 +684,7 @@ export default function App() {
         }
       `}</style>
 
-      {showWelcome && <WelcomeToast username={username} onDone={() => setShowWelcome(false)} />}
+      {showWelcome && <WelcomeSplash username={username} onDone={() => setShowWelcome(false)} />}
 
       <div className="app-layout">
         {sidebarOpen && <div className="sidebar-backdrop no-print" onClick={() => setSidebarOpen(false)} />}
